@@ -1,16 +1,18 @@
-//! Local inference via a bundled `llama-server` (llama.cpp) engine.
-//!
-//! Chronicle runs two `llama-server` instances on localhost — one serving a
-//! Gemma 3 chat/vision model for semantic analysis, one serving EmbeddingGemma
-//! for embeddings — rather than depending on a separately installed
-//! application. Both the `llama-server` binary and the GGUF model files live
-//! under `<data dir>\llama` (see `engine_paths`), where `<data dir>` is the
+//! Local inference over Gemma 3 (chat/vision) and EmbeddingGemma, both run
+//! in-process via `native_inference` (Chronicle's own fork of
+//! `llama-cpp-rs`, at `E:\llama-cpp-rs`, with the `mtmd` multimodal feature
+//! enabled) rather than through a separately spawned `llama-server` HTTP
+//! server. The GGUF model files (and mmproj projector) live under
+//! `<data dir>\llama\models` (see `engine_paths`), where `<data dir>` is the
 //! folder the user chose on first run (see `data_directory`), and are
-//! downloaded once by `local_inference_setup`; nothing here downloads anything
-//! itself. Both servers speak llama.cpp's OpenAI-compatible HTTP API
-//! (`/v1/chat/completions` for text and vision, `/v1/embeddings` for
-//! embeddings), so this module is a thin, stable HTTP client over that API,
-//! not a reimplementation of inference itself.
+//! downloaded once by `local_inference_setup`; nothing here downloads
+//! anything itself.
+//!
+//! `llama-server.exe` is still bundled and spawned by
+//! `start_chat_server_if_needed`/`start_embed_server_if_needed` for now, but
+//! nothing in this provider talks to it over HTTP any more — see the
+//! `native_inference` module for the actual inference path. Retiring that
+//! spawn (and the bundled binary/download) is tracked separately.
 
 use crate::embedding_provider::TextEmbedder;
 use crate::local_semantic_processing::{
@@ -272,19 +274,6 @@ impl Default for LlamaCppProvider {
 }
 
 #[derive(Debug, Deserialize)]
-struct ChatCompletionResponse {
-    choices: Vec<ChatChoice>,
-}
-#[derive(Debug, Deserialize)]
-struct ChatChoice {
-    message: ChatMessage,
-}
-#[derive(Debug, Deserialize)]
-struct ChatMessage {
-    #[serde(default)]
-    content: String,
-}
-#[derive(Debug, Deserialize)]
 struct BatchSemanticResponse {
     results: Vec<BatchSemanticItem>,
 }
@@ -410,33 +399,11 @@ impl LlamaCppProvider {
         }
     }
 
-    fn chat_completion(&self, body: &serde_json::Value) -> Result<String, String> {
-        let url = format!("http://{}:{}/v1/chat/completions", self.host, self.chat_port);
-        let mut response = shared_agent()
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .send(body.to_string().as_bytes())
-            .map_err(|error| format!("local chat engine unavailable: {error}"))?;
-        let payload = response
-            .body_mut()
-            .read_to_string()
-            .map_err(|error| format!("invalid chat engine response: {error}"))?;
-        let parsed: ChatCompletionResponse = serde_json::from_str(&payload)
-            .map_err(|error| format!("invalid chat engine JSON: {error}"))?;
-        parsed
-            .choices
-            .into_iter()
-            .next()
-            .map(|choice| choice.message.content)
-            .ok_or_else(|| "chat engine returned no choices".into())
-    }
-
     /// Runs a chat prompt through the in-process native engine
-    /// (`native_inference`) rather than an HTTP call to `llama-server`. Text
-    /// analysis and embeddings no longer need the chat/embed servers to be
-    /// running at all; `chat_completion`/the HTTP path is kept only for
-    /// vision (`analyze_image`), which still needs `--mmproj` support that
-    /// hasn't been ported to the native path yet.
+    /// (`native_inference`) rather than an HTTP call to `llama-server`. Text,
+    /// embeddings, and vision (`analyze_image`, via `native_inference`'s
+    /// `mtmd`-backed `VisionEngine`) all run this way now — nothing in this
+    /// provider still talks to `llama-server` over HTTP.
     fn generate_chat(&self, prompt: &str, max_tokens: u32) -> Result<String, String> {
         let chat_model = engine_paths::chat_model().ok_or("no data directory configured")?;
         if !chat_model.is_file() {
@@ -487,22 +454,29 @@ impl LlamaCppProvider {
         parse_batch_response(&content, inputs.len())
     }
 
+    /// Runs a screenshot through the in-process native vision engine
+    /// (`native_inference::vision_engine`, backed by `llama-cpp-2`'s `mtmd`
+    /// feature) instead of base64-posting it to a separately spawned
+    /// `llama-server --mmproj`. Same prompt contract every other backend
+    /// this provider has used for vision, just decoded through
+    /// `MtmdContext::tokenize`/`eval_chunks` rather than an HTTP
+    /// `image_url` message.
     pub fn analyze_image(&self, bytes: &[u8]) -> Result<SemanticModelOutput, String> {
         validate_image_input(bytes)?;
-        let data_url = format!("data:image/png;base64,{}", base64_encode(bytes));
-        let body = serde_json::json!({
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                    {"type": "text", "text": "Return JSON only with category, summary, entities, relationships, confidence (0..1). Interpret this screenshot."}
-                ]
-            }],
-            "response_format": {"type": "json_object"},
-            "temperature": 0.2,
-            "max_tokens": MAX_RESPONSE_TOKENS
-        });
-        let content = self.chat_completion(&body)?;
+        let chat_model = engine_paths::chat_model().ok_or("no data directory configured")?;
+        let mmproj = engine_paths::mmproj().ok_or("no data directory configured")?;
+        if !chat_model.is_file() || !mmproj.is_file() {
+            return Err("chat/vision model not installed".into());
+        }
+        let n_ctx = std::num::NonZeroU32::new(SERVER_CONTEXT_SIZE).expect("SERVER_CONTEXT_SIZE is nonzero");
+        let engine = crate::native_inference::vision_engine(
+            &chat_model,
+            &mmproj,
+            n_ctx,
+            inference_thread_count() as i32,
+        )?;
+        let prompt = "Return JSON only with category, summary, entities, relationships, confidence (0..1). Interpret this screenshot.";
+        let content = engine.generate_with_image(bytes, prompt, MAX_RESPONSE_TOKENS)?;
         parse_and_validate_model_json(&content)
     }
 
@@ -544,29 +518,6 @@ impl TextEmbedder for LlamaCppProvider {
             .ok_or("embedding engine returned no embedding".into())
     }
 }
-fn base64_encode(bytes: &[u8]) -> String {
-    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut output = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let a = chunk[0] as u32;
-        let b = chunk.get(1).copied().unwrap_or(0) as u32;
-        let c = chunk.get(2).copied().unwrap_or(0) as u32;
-        let value = (a << 16) | (b << 8) | c;
-        output.push(TABLE[((value >> 18) & 63) as usize] as char);
-        output.push(TABLE[((value >> 12) & 63) as usize] as char);
-        output.push(if chunk.len() > 1 {
-            TABLE[((value >> 6) & 63) as usize] as char
-        } else {
-            '='
-        });
-        output.push(if chunk.len() > 2 {
-            TABLE[(value & 63) as usize] as char
-        } else {
-            '='
-        });
-    }
-    output
-}
 /// `LlamaCppProvider::default()` reads `CHRONICLE_LLAMA_*` env vars, which
 /// are process-global. Tests that set them (to point the provider at a mock
 /// server) and tests that assert on the unset defaults would otherwise race
@@ -577,70 +528,6 @@ fn base64_encode(bytes: &[u8]) -> String {
 pub(crate) fn env_var_lock() -> &'static std::sync::Mutex<()> {
     static LOCK: OnceLock<std::sync::Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| std::sync::Mutex::new(()))
-}
-
-/// A one-shot HTTP server standing in for one `llama-server.exe` endpoint:
-/// accepts a single connection, reads the request (headers + body via
-/// Content-Length), hands the request body to `on_request`, and writes back
-/// whatever body it returns as a 200 JSON response. Shared by this module's
-/// own HTTP-client tests and by `asynchronous_processing_queue`'s full
-/// capture-to-database pipeline test, so both can drive `LlamaCppProvider`
-/// exactly as it would a real `llama-server` instance without needing the
-/// multi-gigabyte model download this pipeline ultimately depends on.
-#[cfg(test)]
-pub(crate) fn mock_http_server(
-    on_request: impl Fn(String) -> String + Send + 'static,
-) -> (u16, std::thread::JoinHandle<()>) {
-    use std::io::{Read, Write};
-    use std::net::TcpListener;
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock server");
-    let addr = listener.local_addr().expect("local addr");
-    let handle = std::thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("accept connection");
-        let mut buf = Vec::new();
-        let mut chunk = [0u8; 4096];
-        let mut content_length = None;
-        loop {
-            let n = stream.read(&mut chunk).expect("read request");
-            buf.extend_from_slice(&chunk[..n]);
-            let text = String::from_utf8_lossy(&buf);
-            if let Some(header_end) = text.find("\r\n\r\n") {
-                if content_length.is_none() {
-                    content_length = text
-                        .lines()
-                        .find_map(|line| {
-                            line.to_ascii_lowercase()
-                                .strip_prefix("content-length:")
-                                .map(|v| v.trim().to_string())
-                        })
-                        .and_then(|v| v.parse::<usize>().ok());
-                }
-                let body_len = buf.len() - (header_end + 4);
-                if let Some(expected) = content_length {
-                    if body_len >= expected {
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
-            if n == 0 {
-                break;
-            }
-        }
-        let text = String::from_utf8_lossy(&buf).into_owned();
-        let header_end = text.find("\r\n\r\n").map(|i| i + 4).unwrap_or(text.len());
-        let request_body = text[header_end..].to_string();
-        let response_body = on_request(request_body);
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            response_body.len(),
-            response_body
-        );
-        stream.write_all(response.as_bytes()).expect("write response");
-        stream.flush().ok();
-    });
-    (addr.port(), handle)
 }
 
 #[cfg(test)]

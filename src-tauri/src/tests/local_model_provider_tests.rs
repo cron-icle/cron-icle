@@ -72,81 +72,21 @@
         }
     }
 
-    /// 1x1 transparent PNG — the minimal input `validate_image_input`
-    /// accepts (its PNG-signature check, not real image content).
-    const TEST_PNG: &[u8] = &[
-        137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 31, 21,
-        196, 137, 0, 0, 0, 10, 73, 68, 65, 84, 120, 156, 99, 0, 1, 0, 0, 5, 0, 1, 13, 10, 45, 180, 0, 0, 0, 0, 73,
-        69, 78, 68, 174, 66, 96, 130,
-    ];
-
-    // `analyze_text`/`analyze_text_batch`/`embed_batch` now run in-process
-    // via `native_inference` (see `generate_chat`), not over HTTP, so they
-    // can't be exercised with `mock_http_server` any more — and must not be,
-    // since going through the real `engine_paths`-resolved model path in a
-    // unit test can pick up a real, already-downloaded multi-gigabyte model
-    // on a developer machine that has actually set up local AI (the global,
-    // OS-level data-directory pointer `data_directory::current()` reads
-    // isn't test-scoped). Their HTTP-transport coverage below now targets
-    // `analyze_image`, the one method still on the HTTP path (vision isn't
-    // ported to the native engine yet); `analyze_text_batch`'s
+    // `analyze_text`/`analyze_text_batch`/`embed_batch`/`analyze_image` all
+    // run in-process via `native_inference` now (see `generate_chat` and
+    // `native_inference::vision_engine`), not over HTTP, so none of them can
+    // be exercised with `mock_http_server` any more — and must not be tested
+    // directly here at all: going through the real `engine_paths`-resolved
+    // model path in a unit test picks up whatever real, already-downloaded
+    // model happens to be installed on the machine running the test (the
+    // global, OS-level data-directory pointer `data_directory::current()`
+    // reads isn't test-scoped), so a "missing model" test here is not
+    // reliably reproducible across machines. `analyze_text_batch`'s
     // response-parsing/reordering contract is covered separately via the
-    // pure `parse_batch_response` below; real native-engine coverage lives
-    // in `native_inference`'s env-var-gated tests against a real GGUF model.
-
-    #[test]
-    fn analyze_image_bounds_generation_with_max_tokens() {
-        let (sender, receiver) = std::sync::mpsc::channel();
-        let (port, handle) = mock_http_server(move |request| {
-            sender.send(request).unwrap();
-            let content = serde_json::json!({
-                "category": "coding",
-                "summary": "s",
-                "entities": [],
-                "relationships": [],
-                "confidence": 0.5
-            })
-            .to_string();
-            serde_json::json!({"choices": [{"message": {"content": content}}]}).to_string()
-        });
-        let provider = provider_for(port);
-        provider.analyze_image(TEST_PNG).expect("analyze_image should succeed");
-        handle.join().unwrap();
-        let request: serde_json::Value = serde_json::from_str(&receiver.recv().unwrap()).unwrap();
-        let max_tokens = request["max_tokens"]
-            .as_u64()
-            .expect("request must bound generation with max_tokens, or a bad generation can pin a worker thread indefinitely");
-        assert_eq!(max_tokens, MAX_RESPONSE_TOKENS as u64);
-    }
-
-    #[test]
-    fn analyze_image_parses_llama_server_chat_response() {
-        let (port, handle) = mock_http_server(|_request| {
-            let content = serde_json::json!({
-                "category": "coding",
-                "summary": "Editing Rust source",
-                "entities": ["chronicle"],
-                "relationships": [],
-                "confidence": 0.9
-            })
-            .to_string();
-            serde_json::json!({"choices": [{"message": {"content": content}}]}).to_string()
-        });
-        let provider = provider_for(port);
-        let result = provider.analyze_image(TEST_PNG).expect("analyze_image should succeed");
-        assert_eq!(result.category, "coding");
-        assert_eq!(result.summary, "Editing Rust source");
-        handle.join().unwrap();
-    }
-
-    #[test]
-    fn chat_completion_surfaces_engine_errors_instead_of_panicking() {
-        let provider = provider_for(1);
-        let err = provider
-            .analyze_image(TEST_PNG)
-            .expect_err("unreachable port must error, not panic");
-        assert!(err.contains("unavailable") || err.contains("engine"));
-    }
+    // pure `parse_batch_response` below; real native-engine coverage (text
+    // and vision) lives in `native_inference`'s env-var-gated tests against
+    // real GGUF models, which opt into a real model explicitly rather than
+    // relying on whatever `data_directory::current()` happens to resolve to.
 
     #[test]
     fn parse_batch_response_reorders_by_response_index() {

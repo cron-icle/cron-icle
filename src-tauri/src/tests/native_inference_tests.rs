@@ -10,6 +10,36 @@
         std::env::var("CHRONICLE_TEST_GGUF_MODEL").ok().map(std::path::PathBuf::from)
     }
 
+    /// Companion mmproj GGUF for `test_model_path`, needed only by the
+    /// `VisionEngine` test below. Point `CHRONICLE_TEST_MMPROJ_MODEL` at the
+    /// multimodal projector matching whatever vision-capable chat model
+    /// `CHRONICLE_TEST_GGUF_MODEL` points at.
+    fn test_mmproj_path() -> Option<std::path::PathBuf> {
+        std::env::var("CHRONICLE_TEST_MMPROJ_MODEL").ok().map(std::path::PathBuf::from)
+    }
+
+    /// 1x1 transparent PNG — the minimal input `VisionEngine` can decode
+    /// through `MtmdBitmap::from_buffer` (a real, if content-free, PNG).
+    const TEST_PNG: &[u8] = &[
+        137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 31, 21,
+        196, 137, 0, 0, 0, 10, 73, 68, 65, 84, 120, 156, 99, 0, 1, 0, 0, 5, 0, 1, 13, 10, 45, 180, 0, 0, 0, 0, 73,
+        69, 78, 68, 174, 66, 96, 130,
+    ];
+
+    #[test]
+    fn vision_engine_produces_nonempty_output_from_a_real_model() {
+        let (Some(model_path), Some(mmproj_path)) = (test_model_path(), test_mmproj_path()) else {
+            eprintln!("skipping: CHRONICLE_TEST_GGUF_MODEL and/or CHRONICLE_TEST_MMPROJ_MODEL not set");
+            return;
+        };
+        let engine = VisionEngine::load(&model_path, &mmproj_path, 0, NonZeroU32::new(4096).unwrap(), 2)
+            .expect("vision model + mmproj should load");
+        let output = engine
+            .generate_with_image(TEST_PNG, "Describe this image.", 32)
+            .expect("generation should succeed");
+        assert!(!output.is_empty(), "model produced no output");
+    }
+
     #[test]
     fn generation_engine_produces_nonempty_output_from_a_real_model() {
         let Some(path) = test_model_path() else {

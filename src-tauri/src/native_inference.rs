@@ -1,4 +1,4 @@
-//! In-process local inference via `llama-cpp-2` bindings to llama.cpp,
+//! In-process local inference via `llama-cpp-rs` bindings to llama.cpp,
 //! replacing the HTTP client to a separately spawned `llama-server.exe`.
 //!
 //! This is not about raw speed — the actual matrix math still runs inside
@@ -19,12 +19,13 @@
 //! conversation state to preserve across calls.
 
 use encoding_rs::UTF_8;
-use llama_cpp_2::context::params::LlamaContextParams;
-use llama_cpp_2::llama_backend::LlamaBackend;
-use llama_cpp_2::llama_batch::LlamaBatch;
-use llama_cpp_2::model::params::LlamaModelParams;
-use llama_cpp_2::model::{AddBos, LlamaChatMessage, LlamaChatTemplate, LlamaModel};
-use llama_cpp_2::sampling::LlamaSampler;
+use llama_cpp_rs::context::params::LlamaContextParams;
+use llama_cpp_rs::llama_backend::LlamaBackend;
+use llama_cpp_rs::llama_batch::LlamaBatch;
+use llama_cpp_rs::model::params::LlamaModelParams;
+use llama_cpp_rs::model::{AddBos, LlamaChatMessage, LlamaChatTemplate, LlamaModel};
+use llama_cpp_rs::mtmd::{MtmdBitmap, MtmdContext, MtmdContextParams, MtmdInputText};
+use llama_cpp_rs::sampling::LlamaSampler;
 use std::num::NonZeroU32;
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
@@ -105,7 +106,7 @@ impl GenerationEngine {
         self.n_ctx
     }
 
-    fn new_context(&self) -> Result<llama_cpp_2::context::LlamaContext<'_>, String> {
+    fn new_context(&self) -> Result<llama_cpp_rs::context::LlamaContext<'_>, String> {
         let params = LlamaContextParams::default()
             .with_n_ctx(Some(self.n_ctx))
             .with_n_threads(self.n_threads)
@@ -212,7 +213,7 @@ impl EmbeddingEngine {
             .new_context(backend(), params)
             .map_err(|error| format!("failed to create embedding context: {error}"))?;
 
-        let tokenized: Vec<Vec<llama_cpp_2::token::LlamaToken>> = inputs
+        let tokenized: Vec<Vec<llama_cpp_rs::token::LlamaToken>> = inputs
             .iter()
             .map(|input| {
                 self.model
@@ -252,6 +253,130 @@ impl EmbeddingEngine {
     }
 }
 
+/// Resident vision-capable engine: the same Gemma 3 chat model as
+/// `GenerationEngine` plus an `MtmdContext` loaded from the mmproj file,
+/// so a screenshot can be embedded and decoded in the same process instead
+/// of being base64-posted to a separately spawned `llama-server --mmproj`
+/// (see `local_model_provider::analyze_image`). `MtmdContext` only stores a
+/// raw pointer with no lifetime tied to the `LlamaModel` it was built from,
+/// so it's paired with the `Arc<LlamaModel>` it depends on here to keep the
+/// model alive for at least as long as the context does.
+#[derive(Clone)]
+pub struct VisionEngine {
+    model: Arc<LlamaModel>,
+    chat_template: LlamaChatTemplate,
+    mtmd: Arc<MtmdContext>,
+    n_ctx: NonZeroU32,
+    n_threads: i32,
+}
+
+impl VisionEngine {
+    pub fn load(
+        model_path: &Path,
+        mmproj_path: &Path,
+        n_gpu_layers: u32,
+        n_ctx: NonZeroU32,
+        n_threads: i32,
+    ) -> Result<Self, String> {
+        let model = load_model(model_path, n_gpu_layers)?;
+        let chat_template = model
+            .chat_template(None)
+            .map_err(|error| format!("model has no usable chat template: {error}"))?;
+        let mtmd_params = MtmdContextParams {
+            use_gpu: n_gpu_layers > 0,
+            print_timings: false,
+            n_threads,
+            media_marker: std::ffi::CString::new(llama_cpp_rs::mtmd::mtmd_default_marker())
+                .expect("default media marker has no interior NUL"),
+            image_min_tokens: -1,
+            image_max_tokens: -1,
+        };
+        let mtmd = MtmdContext::init_from_file(&mmproj_path.to_string_lossy(), &model, &mtmd_params)
+            .map_err(|error| format!("failed to load mmproj {}: {error}", mmproj_path.display()))?;
+        Ok(Self { model, chat_template, mtmd: Arc::new(mtmd), n_ctx, n_threads })
+    }
+
+    pub fn n_ctx(&self) -> NonZeroU32 {
+        self.n_ctx
+    }
+
+    /// Renders `prompt` through the chat template with the image's media
+    /// marker appended (if the caller didn't already place one), tokenizes
+    /// text+image together via `MtmdContext::tokenize`, prefills both
+    /// through `MtmdInputChunks::eval_chunks` (which internally runs
+    /// `mtmd_encode` for the image chunk and `llama_decode` for the rest),
+    /// then decodes up to `max_tokens` the same way `GenerationEngine::generate`
+    /// does for text-only prompts.
+    pub fn generate_with_image(&self, image_bytes: &[u8], prompt: &str, max_tokens: u32) -> Result<String, String> {
+        let marker = llama_cpp_rs::mtmd::mtmd_default_marker();
+        let prompt_with_marker =
+            if prompt.contains(marker) { prompt.to_string() } else { format!("{prompt}{marker}") };
+        let message = LlamaChatMessage::new("user".to_string(), prompt_with_marker)
+            .map_err(|error| format!("invalid prompt for chat message: {error}"))?;
+        let rendered = self
+            .model
+            .apply_chat_template(&self.chat_template, &[message], true)
+            .map_err(|error| format!("failed to apply chat template: {error}"))?;
+
+        let bitmap = MtmdBitmap::from_buffer(&self.mtmd, image_bytes, false)
+            .map_err(|error| format!("failed to decode image: {error}"))?;
+        let input_text = MtmdInputText { text: rendered, add_special: true, parse_special: true };
+        let chunks = self
+            .mtmd
+            .tokenize(input_text, &[&bitmap])
+            .map_err(|error| format!("failed to tokenize image prompt: {error}"))?;
+
+        let params = LlamaContextParams::default()
+            .with_n_ctx(Some(self.n_ctx))
+            .with_n_threads(self.n_threads)
+            .with_n_threads_batch(self.n_threads);
+        let mut ctx = self
+            .model
+            .new_context(backend(), params)
+            .map_err(|error| format!("failed to create inference context: {error}"))?;
+
+        let mut n_past = chunks
+            .eval_chunks(&self.mtmd, &ctx, 0, 0, self.n_ctx.get() as i32, true)
+            .map_err(|error| format!("failed to evaluate image prompt: {error}"))?;
+
+        let mut sampler = LlamaSampler::chain_simple([
+            LlamaSampler::temp(SAMPLING_TEMPERATURE),
+            LlamaSampler::dist(rand_seed()),
+        ]);
+        let mut decoder = UTF_8.new_decoder();
+        let mut output = String::new();
+        let mut batch = LlamaBatch::new(512, 1);
+        // The prefill decode happened inside `eval_chunks`, opaque to this
+        // function, so there's no local `LlamaBatch` whose last-token index
+        // to sample from; -1 is llama.cpp's own convention for "logits of
+        // the most recently decoded token", which is what the upstream mtmd
+        // CLI example uses for exactly this first-token-after-prefill case.
+        let mut next_index: i32 = -1;
+        for _ in 0..max_tokens {
+            let token = sampler.sample(&ctx, next_index);
+            sampler.accept(token);
+            if self.model.is_eog_token(token) {
+                break;
+            }
+            let piece = self
+                .model
+                .token_to_piece(token, &mut decoder, true, None)
+                .map_err(|error| format!("failed to decode generated token: {error}"))?;
+            output.push_str(&piece);
+
+            batch.clear();
+            batch
+                .add(token, n_past, &[0], true)
+                .map_err(|error| format!("failed to extend generation batch: {error}"))?;
+            n_past += 1;
+            ctx.decode(&mut batch)
+                .map_err(|error| format!("failed to evaluate generated token: {error}"))?;
+            next_index = batch.n_tokens() - 1;
+        }
+        Ok(output)
+    }
+}
+
 /// Process-wide resident engines, lazily loaded on first use. Keyed by
 /// model path so switching the configured model file reloads rather than
 /// silently keeps serving the old weights.
@@ -271,6 +396,13 @@ impl EmbeddingEngine {
 static GENERATION_ENGINE: OnceLock<std::sync::Mutex<Option<ResidentEngine<GenerationEngine>>>> = OnceLock::new();
 static EMBEDDING_ENGINE: OnceLock<std::sync::Mutex<Option<(std::path::PathBuf, EmbeddingEngine)>>> =
     OnceLock::new();
+/// Keyed by `(chat_model_path, mmproj_path)` since either file changing
+/// invalidates the resident `MtmdContext`. Shares `GENERATION_KEEP_ALIVE`'s
+/// unload policy via `sweep_idle_engines` for the same reason
+/// `GENERATION_ENGINE` does: the vision model is the same multi-gigabyte
+/// Gemma 3 weights, just with the projector attached, so it shouldn't sit
+/// resident indefinitely either.
+static VISION_ENGINE: OnceLock<std::sync::Mutex<Option<ResidentEngine<VisionEngine>>>> = OnceLock::new();
 
 /// How long the generation engine stays loaded after its last use before
 /// `sweep_idle_engines` unloads it. Deliberately longer than a single
@@ -321,12 +453,18 @@ pub fn generation_engine_state() -> ModelState {
 /// already the thing best positioned to know "no AI work has happened
 /// recently."
 pub fn sweep_idle_engines() {
-    let Some(cell) = GENERATION_ENGINE.get() else {
-        return;
-    };
-    if let Ok(mut guard) = cell.lock() {
-        if guard.as_ref().is_some_and(|r| r.last_used.elapsed() >= GENERATION_KEEP_ALIVE) {
-            *guard = None; // dropping the Arc<LlamaModel> here releases the weights
+    if let Some(cell) = GENERATION_ENGINE.get() {
+        if let Ok(mut guard) = cell.lock() {
+            if guard.as_ref().is_some_and(|r| r.last_used.elapsed() >= GENERATION_KEEP_ALIVE) {
+                *guard = None; // dropping the Arc<LlamaModel> here releases the weights
+            }
+        }
+    }
+    if let Some(cell) = VISION_ENGINE.get() {
+        if let Ok(mut guard) = cell.lock() {
+            if guard.as_ref().is_some_and(|r| r.last_used.elapsed() >= GENERATION_KEEP_ALIVE) {
+                *guard = None;
+            }
         }
     }
 }
@@ -387,6 +525,30 @@ pub fn generation_engine(model_path: &Path, n_ctx: NonZeroU32, n_threads: i32) -
     }
     let safe_n_ctx = safe_context_size(model_path, n_ctx)?;
     let engine = GenerationEngine::load(model_path, 0, safe_n_ctx, n_threads)?;
+    *guard = Some(ResidentEngine {
+        model_path: model_path.to_path_buf(),
+        engine: engine.clone(),
+        last_used: std::time::Instant::now(),
+    });
+    Ok(engine)
+}
+
+pub fn vision_engine(
+    model_path: &Path,
+    mmproj_path: &Path,
+    n_ctx: NonZeroU32,
+    n_threads: i32,
+) -> Result<VisionEngine, String> {
+    let cell = VISION_ENGINE.get_or_init(|| std::sync::Mutex::new(None));
+    let mut guard = cell.lock().map_err(|_| "vision engine lock poisoned".to_string())?;
+    if let Some(resident) = guard.as_mut() {
+        if resident.model_path == model_path && resident.engine.n_ctx() >= n_ctx {
+            resident.last_used = std::time::Instant::now();
+            return Ok(resident.engine.clone());
+        }
+    }
+    let safe_n_ctx = safe_context_size(model_path, n_ctx)?;
+    let engine = VisionEngine::load(model_path, mmproj_path, 0, safe_n_ctx, n_threads)?;
     *guard = Some(ResidentEngine {
         model_path: model_path.to_path_buf(),
         engine: engine.clone(),
