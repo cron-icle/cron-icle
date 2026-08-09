@@ -10,7 +10,10 @@ mod filesystem_activity_capture;
 #[allow(dead_code)]
 mod input_capture;
 mod local_inference_setup;
+mod hardware_profiler;
 mod local_model_provider;
+mod memory_planner;
+mod native_inference;
 #[allow(dead_code)]
 mod local_semantic_processing;
 mod local_sqlite_event_database;
@@ -86,6 +89,7 @@ pub fn run() {
             tauri_application_commands::set_watched_folders,
             tauri_application_commands::processing_queue_status,
             tauri_application_commands::processing_metrics,
+            tauri_application_commands::inference_telemetry,
             tauri_application_commands::storage_usage,
             tauri_application_commands::model_provider_status,
             tauri_application_commands::processing_queue_limits,

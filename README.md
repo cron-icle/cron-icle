@@ -34,7 +34,7 @@ Raw events are append-only evidence. Semantic events reference their source raw 
 
 ### Local AI engine
 
-Local inference runs on a bundled [llama.cpp](https://github.com/ggml-org/llama.cpp) `llama-server` — no separate install, tray icon, or Start Menu entry. Chronicle downloads it once and runs it as an ordinary child process.
+Local inference runs on [llama.cpp](https://github.com/ggml-org/llama.cpp), bundled — no separate install, tray icon, or Start Menu entry for it. Text analysis and embeddings run **in-process** via native `llama-cpp-2` Rust bindings (direct control over model/context lifecycle and memory, not an HTTP call to a separately spawned server); a bundled `llama-server` is still spawned for vision (screenshot) analysis, which hasn't been ported to the native path yet.
 
 ```mermaid
 flowchart TB
@@ -44,14 +44,21 @@ flowchart TB
         S3 --> S4["4. Start engines"]
     end
 
-    S4 --> Chat["llama-server :8090\n/v1/chat/completions\n--jinja -c 8192"]
-    S4 --> Embed["llama-server :8091\n/v1/embeddings\n--embeddings -c 8192"]
+    S4 --> Native["native_inference (in-process)\nGenerationEngine + EmbeddingEngine"]
+    S4 --> Chat["llama-server :8090\n/v1/chat/completions\n--jinja -c 8192\n(vision only)"]
 
-    Worker["AI queue worker"] -->|text / vision| Chat
-    Worker -->|batched embeddings| Embed
+    Worker["AI queue worker"] -->|text| Native
+    Worker -->|batched embeddings| Native
+    Worker -->|vision| Chat
 ```
 
-Both servers speak llama.cpp's OpenAI-compatible API on `127.0.0.1`, overridable via `CHRONICLE_LLAMA_HOST` / `CHRONICLE_LLAMA_CHAT_PORT` / `CHRONICLE_LLAMA_EMBED_PORT`. Text analysis batches up to 8 events per request with an index-checked response (falling back to individual requests if a batch response is malformed); embeddings batch natively through `/v1/embeddings`'s array input. Each server is launched only if its files are present and it isn't already listening; Chronicle stops only the processes it started. Capture and persistence work fully with none of this set up — the AI queue simply retries until setup completes.
+Text analysis batches up to 8 events per numbered prompt with an index-checked response; embeddings batch natively by packing every input into one context as its own sequence. The vision `llama-server` speaks llama.cpp's OpenAI-compatible API on `127.0.0.1`, overridable via `CHRONICLE_LLAMA_HOST` / `CHRONICLE_LLAMA_CHAT_PORT` / `CHRONICLE_LLAMA_EMBED_PORT`, and is launched only if its files are present and it isn't already listening. Capture and persistence work fully with none of this set up — the AI queue simply retries until setup completes.
+
+Native JSON output currently relies on prompt instructions plus response validation/retry, not grammar-constrained decoding (a hand-written GBNF grammar crashed this llama.cpp build's grammar engine outright and was reverted rather than shipped) — a known gap tracked for a schema-driven grammar follow-up.
+
+**Resource-aware scheduling** (`hardware_profiler` + `memory_planner`): every model load is checked against real, current available RAM (`GlobalMemoryStatusEx`) before it happens — context size steps down through a ladder (8192 → 4096 → 2048 → 1024) until a size is found that fits with headroom to spare, and a load is refused outright rather than risking an OOM if nothing fits. Per-request context size also scales with what the prompt actually needs (a single short event vs. an 8-item batch) instead of always requesting the maximum. Batch size scales the same way against available memory (`adaptive_batch_size`). None of this touches GPU sizing yet — the bundled engine is CPU-only, so GPU is always reported absent rather than guessed at.
+
+**Model lifecycle**: the two engines have different residency policies. `EmbeddingEngine` stays resident once loaded — it's small and called on every processed event. `GenerationEngine` (the multi-gigabyte chat/vision model) unloads after 60s of inactivity (`GENERATION_KEEP_ALIVE`), checked on every idle tick of the AI worker's poll loop, and transparently reloads (with a larger context if a new request needs more than the last load had) on the next request — trading a small reload cost for not holding gigabytes of RAM during the long stretches between capture events. `inference_telemetry` (a Tauri command) exposes the current hardware snapshot, the generation engine's residency state (`unloaded`/`ready`/`idle`), and the batch size that would currently be chosen.
 
 ## Privacy
 
@@ -69,15 +76,26 @@ Both servers speak llama.cpp's OpenAI-compatible API on `127.0.0.1`, overridable
 - The AI worker batches, paces between batches, and steps aside while you're actively typing/clicking, so local inference doesn't compete with active use.
 - The local engine client reuses keep-alive HTTP connections and bounds generation length (`max_tokens`) so one bad response can't stall the queue.
 - `processing_metrics` (completed/failed/panicked counts, average latency) is queryable live, separate from raw queue counts.
+- Model load/context size, batch size, and the generation model's residency all adapt to currently available RAM instead of using fixed values (see "Resource-aware scheduling" above).
 
 ## Known limitations
 
-- GPU acceleration isn't automatic — the engine always downloads the CPU-only build.
+- GPU acceleration isn't automatic — model weights always load with 0 GPU layers (CPU only).
+- Vision (screenshot) analysis still goes through the HTTP `llama-server`, not the native path — text and embeddings do.
+- Native JSON output has no grammar constraint (see "Local AI engine" above); relies on prompt instructions and response validation/retry.
+- The embedding model always stays resident once loaded (by design — see "Model lifecycle" above); only the generation model idle-unloads.
 - No model-swap/version-upgrade path; replacing a model means removing it and downloading a replacement by hand.
 - Elevated apps, UAC/secure-desktop input, and antivirus interaction are untested.
 - Raw-event search does not currently filter by query (see `Database::recent_events`).
 
 ## Development
+
+Building the Rust backend compiles llama.cpp from source (for the native inference bindings), which needs **CMake** and **LLVM/libclang** (for `bindgen`) on `PATH`, in addition to the MSVC Build Tools Tauri already requires:
+
+```powershell
+winget install --id Kitware.CMake -e
+winget install --id LLVM.LLVM -e
+```
 
 ```powershell
 npm install

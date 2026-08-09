@@ -736,6 +736,56 @@ pub fn processing_metrics(state: State<'_, AppState>) -> Result<ProcessingMetric
     })
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct HardwareProfileView {
+    pub logical_cores: usize,
+    pub total_ram_mb: u64,
+    pub available_ram_mb: u64,
+    pub gpu_available: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InferenceTelemetryView {
+    pub hardware: HardwareProfileView,
+    /// "unloaded" | "ready" | "idle" — the generation (chat/vision) model's
+    /// current residency state (see `native_inference::ModelState`). The
+    /// embedding model has no separate state to report here since it never
+    /// idle-unloads by design (see `native_inference` module docs) — it's
+    /// either not yet loaded or resident, which `processing_metrics`'
+    /// `last_model_name` already implies once anything has processed.
+    pub generation_engine_state: &'static str,
+    pub current_batch_size: usize,
+}
+
+/// Snapshot of the hardware/memory/model-lifecycle state behind the AI
+/// pipeline's scheduling decisions — "why is it batching this many items,
+/// why did the model just reload" made visible instead of only inferable
+/// from timing. Complements `processing_metrics` (throughput/latency) and
+/// `processing_queue_status` (backlog) with the resource picture behind
+/// both.
+#[tauri::command]
+pub fn inference_telemetry() -> InferenceTelemetryView {
+    let profile = crate::hardware_profiler::HardwareProfile::detect();
+    let current_batch_size = crate::memory_planner::adaptive_batch_size(
+        crate::asynchronous_processing_queue::MAX_MODEL_BATCH_SIZE,
+        &profile,
+    );
+    InferenceTelemetryView {
+        hardware: HardwareProfileView {
+            logical_cores: profile.logical_cores,
+            total_ram_mb: profile.total_ram_bytes / (1024 * 1024),
+            available_ram_mb: profile.available_ram_bytes / (1024 * 1024),
+            gpu_available: profile.gpu.is_some(),
+        },
+        generation_engine_state: match crate::native_inference::generation_engine_state() {
+            crate::native_inference::ModelState::Unloaded => "unloaded",
+            crate::native_inference::ModelState::Ready => "ready",
+            crate::native_inference::ModelState::Idle => "idle",
+        },
+        current_batch_size,
+    }
+}
+
 #[tauri::command]
 pub async fn storage_usage(
     state: State<'_, AppState>,

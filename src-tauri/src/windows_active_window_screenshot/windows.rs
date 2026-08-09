@@ -84,10 +84,5 @@ pub fn capture_window_png(window_handle: isize) -> Result<Vec<u8>, String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn invalid_window_handle_is_reported_without_panicking() {
-        assert!(capture_window_png(0).is_err());
-    }
-}
+#[path = "../tests/windows_active_window_screenshot_windows_tests.rs"]
+mod tests;
