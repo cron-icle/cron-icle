@@ -1,3 +1,4 @@
-fn main() {
-    chronicle_lib::run();
+#[tokio::main]
+async fn main() {
+    chronicle_lib::run().await;
 }

@@ -3,8 +3,8 @@
 //! Chronicle's semantic analysis and embeddings run on a bundled llama.cpp
 //! engine (`llama-server`) rather than a separately installed application:
 //! nothing here shows up in the Start Menu, the system tray, or Windows'
-//! installed-apps list. The `llama-server` binary itself ships inside the
-//! app install (see `src-tauri/resources/llama` and
+//! installed-apps list. The `llama-server` binary itself ships alongside the
+//! Chronicle binary (see `src-tauri/resources/llama` and
 //! `local_model_provider::engine_paths::runtime_dir`) — nothing here
 //! downloads it. This module only downloads the GGUF model files (Gemma 3
 //! for chat/vision, EmbeddingGemma for embeddings, both from their official
@@ -12,11 +12,11 @@
 //! `data_directory::current`, the folder the user chooses from Settings —
 //! the download commands below refuse to run until one is chosen), starts/
 //! stops the two local servers, and removes downloaded model files again on
-//! request. Every step is UI-triggered and streams real,
-//! byte-accurate progress back as `llama-setup-progress` events (also
+//! request. Every step is UI-triggered and streams real, byte-accurate
+//! progress into `AppState::download_progress`, which the UI polls (also
 //! mirrored to `tracing`, so the same information is visible in the
-//! `npm run dev` terminal and the app UI). Nothing here runs automatically
-//! or silently in the background.
+//! terminal and the browser UI). Nothing here runs automatically or
+//! silently in the background.
 
 use crate::local_model_provider::{engine_paths, shared_agent, LlamaCppProvider};
 use crate::tauri_application_commands::AppState;
@@ -24,8 +24,8 @@ use serde::Serialize;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, State};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LlamaSetupStatus {
@@ -51,9 +51,8 @@ fn setup_status_blocking() -> LlamaSetupStatus {
     }
 }
 
-#[tauri::command]
 pub async fn local_ai_setup_status() -> LlamaSetupStatus {
-    tauri::async_runtime::spawn_blocking(setup_status_blocking)
+    tokio::task::spawn_blocking(setup_status_blocking)
         .await
         .unwrap_or(LlamaSetupStatus {
             runtime_installed: false,
@@ -67,15 +66,15 @@ pub async fn local_ai_setup_status() -> LlamaSetupStatus {
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct DownloadProgress {
-    label: String,
-    downloaded_bytes: u64,
-    total_bytes: Option<u64>,
-    percent: Option<f32>,
+pub struct DownloadProgress {
+    pub label: String,
+    pub downloaded_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub percent: Option<f32>,
 }
 
-fn emit_download_progress(
-    app: &AppHandle,
+fn set_download_progress(
+    state: &AppState,
     label: &str,
     downloaded: u64,
     total: Option<u64>,
@@ -89,28 +88,35 @@ fn emit_download_progress(
     let percent = total
         .filter(|&total| total > 0)
         .map(|total| (downloaded as f64 / total as f64 * 100.0) as f32);
-    let _ = app.emit(
-        "llama-setup-progress",
-        DownloadProgress {
+    if let Ok(mut slot) = state.download_progress.lock() {
+        *slot = Some(DownloadProgress {
             label: label.to_string(),
             downloaded_bytes: downloaded,
             total_bytes: total,
             percent,
-        },
-    );
+        });
+    }
 }
 
-/// Streams `url` to `dest`, byte by byte, emitting real (not estimated)
-/// progress from the response's `Content-Length` header. Writes to a
-/// `.part` sibling file and renames on success, so a failed/cancelled
-/// download never leaves a file that looks complete but isn't.
+/// Current progress of an in-flight model download, if any. Polled by the
+/// UI instead of pushed, since there is no event channel once the app runs
+/// as a plain HTTP server.
+pub fn download_progress(state: &AppState) -> Option<DownloadProgress> {
+    state.download_progress.lock().ok().and_then(|guard| guard.clone())
+}
+
+/// Streams `url` to `dest`, byte by byte, recording real (not estimated)
+/// progress from the response's `Content-Length` header into
+/// `AppState::download_progress`. Writes to a `.part` sibling file and
+/// renames on success, so a failed/cancelled download never leaves a file
+/// that looks complete but isn't.
 ///
 /// Checks `cancel` after every chunk (at most 64KiB of latency, not one long
 /// unresponsive read) and, if set, stops and deletes the partial `.part`
 /// file rather than leaving a truncated download that looks resumable but
 /// isn't — the next attempt starts clean from byte zero.
 fn download_with_progress(
-    app: &AppHandle,
+    state: &AppState,
     label: &str,
     url: &str,
     dest: &Path,
@@ -152,9 +158,9 @@ fn download_with_progress(
         file.write_all(&buffer[..read])
             .map_err(|error| format!("failed writing {label}: {error}"))?;
         downloaded += read as u64;
-        emit_download_progress(app, label, downloaded, total, false, &mut last_emit);
+        set_download_progress(state, label, downloaded, total, false, &mut last_emit);
     }
-    emit_download_progress(app, label, downloaded, total, true, &mut last_emit);
+    set_download_progress(state, label, downloaded, total, true, &mut last_emit);
     drop(file);
     std::fs::rename(&tmp_path, dest)
         .map_err(|error| format!("failed to finalize {label}: {error}"))?;
@@ -168,39 +174,42 @@ const NO_DATA_DIRECTORY_ERROR: &str =
 /// Requests the in-flight model download, if any, stop as soon as it next
 /// checks (see `download_with_progress`) — cooperative, not instantaneous,
 /// since the underlying HTTP read can't be interrupted mid-syscall.
-#[tauri::command]
-pub fn cancel_model_download(state: State<'_, AppState>) -> Result<(), String> {
+pub fn cancel_model_download(state: &AppState) -> Result<(), String> {
     state.download_cancel.store(true, Ordering::Relaxed);
     Ok(())
 }
 
 /// Downloads the Gemma 3 chat/vision model and its multimodal projector.
-#[tauri::command]
-pub async fn setup_download_chat_model(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+/// Runs synchronously; callers that want a non-blocking HTTP response
+/// (`http_api`) spawn this on a background task and let the caller poll
+/// `download_progress` instead of awaiting completion.
+pub async fn setup_download_chat_model(state: Arc<AppState>) -> Result<(), String> {
     state.download_cancel.store(false, Ordering::Relaxed);
     let cancel = state.download_cancel.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let state_for_blocking = state.clone();
+    tokio::task::spawn_blocking(move || {
         let (Some(chat_model), Some(mmproj)) = (engine_paths::chat_model(), engine_paths::mmproj())
         else {
             return Err(NO_DATA_DIRECTORY_ERROR.to_string());
         };
-        download_with_progress(&app, "Gemma 3 chat model", engine_paths::CHAT_MODEL_URL, &chat_model, &cancel)?;
-        download_with_progress(&app, "Gemma 3 vision projector", engine_paths::MMPROJ_URL, &mmproj, &cancel)
+        download_with_progress(&state_for_blocking, "Gemma 3 chat model", engine_paths::CHAT_MODEL_URL, &chat_model, &cancel)?;
+        download_with_progress(&state_for_blocking, "Gemma 3 vision projector", engine_paths::MMPROJ_URL, &mmproj, &cancel)
     })
     .await
     .map_err(|error| error.to_string())?
 }
 
-/// Downloads the EmbeddingGemma model.
-#[tauri::command]
-pub async fn setup_download_embed_model(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+/// Downloads the EmbeddingGemma model. See `setup_download_chat_model` for
+/// the non-blocking-caller convention.
+pub async fn setup_download_embed_model(state: Arc<AppState>) -> Result<(), String> {
     state.download_cancel.store(false, Ordering::Relaxed);
     let cancel = state.download_cancel.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let state_for_blocking = state.clone();
+    tokio::task::spawn_blocking(move || {
         let Some(embed_model) = engine_paths::embed_model() else {
             return Err(NO_DATA_DIRECTORY_ERROR.to_string());
         };
-        download_with_progress(&app, "EmbeddingGemma model", engine_paths::EMBED_MODEL_URL, &embed_model, &cancel)
+        download_with_progress(&state_for_blocking, "EmbeddingGemma model", engine_paths::EMBED_MODEL_URL, &embed_model, &cancel)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -210,11 +219,10 @@ pub async fn setup_download_embed_model(app: AppHandle, state: State<'_, AppStat
 /// present and they aren't already listening, registering any child this
 /// call starts in `AppState` so it's stopped the same way as one started at
 /// application launch (see `shutdown_llama_engine`).
-#[tauri::command]
-pub async fn setup_start_engine(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn setup_start_engine(state: &AppState) -> Result<(), String> {
     let engine = LlamaCppProvider::default();
     let chat_engine = engine.clone();
-    let chat_child = tauri::async_runtime::spawn_blocking(move || chat_engine.start_chat_server_if_needed())
+    let chat_child = tokio::task::spawn_blocking(move || chat_engine.start_chat_server_if_needed())
         .await
         .map_err(|error| error.to_string())??;
     if let Some(child) = chat_child {
@@ -225,7 +233,7 @@ pub async fn setup_start_engine(state: State<'_, AppState>) -> Result<(), String
         }
     }
     let embed_engine = engine.clone();
-    let embed_child = tauri::async_runtime::spawn_blocking(move || embed_engine.start_embed_server_if_needed())
+    let embed_child = tokio::task::spawn_blocking(move || embed_engine.start_embed_server_if_needed())
         .await
         .map_err(|error| error.to_string())??;
     if let Some(child) = embed_child {
@@ -258,11 +266,10 @@ fn remove_file_if_exists(path: &Path) -> Result<(), String> {
 /// Removes the Gemma 3 chat/vision model and its projector. Stops the chat
 /// server first: on Windows a running server keeps its model files locked,
 /// so deleting them out from under it would fail.
-#[tauri::command]
-pub async fn setup_remove_chat_model(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn setup_remove_chat_model(state: &AppState) -> Result<(), String> {
     stop_process(&state.llama_chat_process);
     tracing::info!(target: "chronicle::local_inference_setup", "removing Gemma 3 chat model");
-    tauri::async_runtime::spawn_blocking(|| {
+    tokio::task::spawn_blocking(|| {
         if let Some(chat_model) = engine_paths::chat_model() {
             remove_file_if_exists(&chat_model)?;
         }
@@ -277,11 +284,10 @@ pub async fn setup_remove_chat_model(state: State<'_, AppState>) -> Result<(), S
 
 /// Removes the EmbeddingGemma model. Stops the embedding server first for
 /// the same file-locking reason as `setup_remove_chat_model`.
-#[tauri::command]
-pub async fn setup_remove_embed_model(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn setup_remove_embed_model(state: &AppState) -> Result<(), String> {
     stop_process(&state.llama_embed_process);
     tracing::info!(target: "chronicle::local_inference_setup", "removing EmbeddingGemma model");
-    tauri::async_runtime::spawn_blocking(|| match engine_paths::embed_model() {
+    tokio::task::spawn_blocking(|| match engine_paths::embed_model() {
         Some(embed_model) => remove_file_if_exists(&embed_model),
         None => Ok(()),
     })
