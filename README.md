@@ -98,18 +98,43 @@ Native JSON output currently relies on prompt instructions plus response validat
 
 ## Installation
 
-Chronicle is a single executable — download it, run it, and it opens in your browser. There's no installer, no admin prompt, and no code-signing/notarization step, so your OS will flag it as an unrecognized binary the first time; that's expected for an unsigned indie tool and safe to bypass.
+Chronicle is a single executable — install it, run it, and it opens in your browser. There's no installer, no admin prompt, and no code-signing/notarization step, so your OS will flag it as an unrecognized binary the first time; that's expected for an unsigned indie tool and safe to bypass.
 
-1. Download the latest `chronicle.exe` (or the equivalent binary for your OS, once cross-platform capture ships — see [Known limitations](#known-limitations)) from the project's Releases page.
+### One-line install (PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/anadi45/chronicle/main/scripts/install.ps1 | iex
+```
+
+This downloads the latest release binary from [GitHub Releases](https://github.com/anadi45/chronicle/releases) (built and published automatically by `.github/workflows/release.yml` on every `vX.Y.Z` tag), installs it to `%LOCALAPPDATA%\Chronicle\chronicle.exe`, and adds that folder to your user `PATH`. Open a **new** terminal afterward and run:
+
+```powershell
+chronicle
+```
+
+To install a specific version instead of latest, download the script first and pass `-Version`:
+
+```powershell
+irm https://raw.githubusercontent.com/anadi45/chronicle/main/scripts/install.ps1 -OutFile install.ps1
+.\install.ps1 -Version v1.2.3
+```
+
+### Manual install
+
+Prefer not to run someone's install script? Download the binary yourself:
+
+1. Grab `chronicle-windows-x86_64.exe` from the [latest release](https://github.com/anadi45/chronicle/releases/latest).
 2. Run it from a terminal or by double-clicking it:
    ```powershell
-   .\chronicle.exe
+   .\chronicle-windows-x86_64.exe
    ```
-3. Windows SmartScreen will likely show "Windows protected your PC" on first run — click **More info → Run anyway**. This is a reputation warning, not a malware detection; it goes away over time as more people run the same binary, and can be skipped entirely by building from source yourself (see [Development](#development)).
-4. Your default browser opens automatically to `http://127.0.0.1:47823` (override the port with the `CHRONICLE_PORT` environment variable, e.g. `$env:CHRONICLE_PORT=8123; .\chronicle.exe`; skip the auto-open with `CHRONICLE_NO_OPEN=1`). Capture and local AI setup are configured from the **Settings** page inside the app.
-5. Chronicle keeps running in that terminal/background process as long as you want capture active — closing the browser tab does not stop it. Stop it with Ctrl+C in the terminal it's running in (or Task Manager if launched detached); this cleanly stops capture and any running local-model engine processes before exiting.
 
-Chronicle stores everything — the event database and downloaded models — in a data directory you choose on first run from **Settings**. Nothing is written anywhere before you choose one; until then it runs in a temporary, non-persistent mode.
+### After installing
+
+- Windows SmartScreen will likely show "Windows protected your PC" on first run — click **More info → Run anyway**. This is a reputation warning, not a malware detection; it goes away over time as more people run the same binary, and can be skipped entirely by building from source yourself (see [Development](#development)).
+- Your default browser opens automatically to `http://127.0.0.1:47823` (override the port with the `CHRONICLE_PORT` environment variable, e.g. `$env:CHRONICLE_PORT=8123; chronicle`; skip the auto-open with `CHRONICLE_NO_OPEN=1`). Capture and local AI setup are configured from the **Settings** page inside the app.
+- Chronicle keeps running in that terminal/background process as long as you want capture active — closing the browser tab does not stop it. Stop it with Ctrl+C in the terminal it's running in (or Task Manager if launched detached); this cleanly stops capture and any running local-model engine processes before exiting.
+- Chronicle stores everything — the event database and downloaded models — in a data directory you choose on first run from **Settings**. Nothing is written anywhere before you choose one; until then it runs in a temporary, non-persistent mode.
 
 ## Development
 

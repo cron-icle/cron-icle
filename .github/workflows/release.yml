@@ -1,0 +1,88 @@
+name: Release
+
+# Builds the standalone Chronicle binary and attaches it to a GitHub Release
+# whenever a version tag (v1.2.3) is pushed. There is no code-signing or
+# notarization step by design (see README's Installation section) — this is
+# what makes `scripts/install.ps1` able to fetch a binary and run it directly.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build and attach a binary to"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      # Chronicle's native inference bindings live in a sibling repository
+      # (see src-tauri/Cargo.toml's `llama-cpp-rs` path dependency, resolved
+      # as ../../llama-cpp-rs/llama-cpp-rs relative to src-tauri/) rather than
+      # a published crate, so both repos are checked out as siblings under
+      # the runner workspace to match the layout local development expects.
+      - name: Checkout chronicle
+        uses: actions/checkout@v4
+        with:
+          path: chronicle
+
+      - name: Checkout llama-cpp-rs
+        uses: actions/checkout@v4
+        with:
+          repository: anadi45/llama-cpp-rs
+          submodules: recursive
+          path: llama-cpp-rs
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: chronicle/package-lock.json
+
+      - name: Install CMake and LLVM (bindgen needs libclang)
+        run: |
+          choco install cmake llvm -y --no-progress --installargs 'ADD_CMAKE_TO_PATH=System'
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+
+      - name: Install frontend dependencies
+        working-directory: chronicle
+        run: npm install
+
+      - name: Build frontend
+        working-directory: chronicle
+        run: npm run build
+
+      - name: Build release binary
+        working-directory: chronicle
+        run: cargo build --release --bin chronicle --manifest-path src-tauri/Cargo.toml
+
+      - name: Stage release asset
+        working-directory: chronicle
+        run: |
+          New-Item -ItemType Directory -Force -Path dist-release | Out-Null
+          Copy-Item src-tauri\target\release\chronicle.exe dist-release\chronicle-windows-x86_64.exe
+
+      - name: Determine release tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          files: chronicle/dist-release/chronicle-windows-x86_64.exe
+          generate_release_notes: true
