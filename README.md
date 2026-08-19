@@ -100,23 +100,27 @@ Native JSON output currently relies on prompt instructions plus response validat
 
 Chronicle is a single executable — install it, run it, and it opens in your browser. There's no installer, no admin prompt, and no code-signing/notarization step, so your OS will flag it as an unrecognized binary the first time; that's expected for an unsigned indie tool and safe to bypass.
 
-### One-line install (PowerShell)
+### One-line install (curl)
 
-```powershell
-irm https://raw.githubusercontent.com/anadi45/chronicle/main/scripts/install.ps1 | iex
+Windows 10/11 ships `curl.exe` out of the box. Run this from any terminal (PowerShell, cmd, Windows Terminal):
+
+```
+curl.exe -sSL -o "$env:TEMP\chronicle-install.ps1" https://raw.githubusercontent.com/anadi45/chronicle/main/scripts/install.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\chronicle-install.ps1"
 ```
 
-This downloads the latest release binary from [GitHub Releases](https://github.com/anadi45/chronicle/releases) (built and published automatically by `.github/workflows/release.yml` on every `vX.Y.Z` tag), installs it to `%LOCALAPPDATA%\Chronicle\chronicle.exe`, and adds that folder to your user `PATH`. Open a **new** terminal afterward and run:
+(This downloads the script to a temp file and runs it with `-File` rather than piping into `powershell -Command -` — Windows PowerShell 5.1 silently no-ops a multi-line script fed that way instead of erroring, so download-then-run is the form that's actually verified to work.)
+
+This installs the latest release binary from [GitHub Releases](https://github.com/anadi45/chronicle/releases) (built and published automatically by `.github/workflows/release.yml` on every `vX.Y.Z` tag) to `%LOCALAPPDATA%\Programs\Chronicle\chronicle.exe` and adds that folder to your user `PATH`. Open a **new** terminal afterward and run:
 
 ```powershell
 chronicle
 ```
 
-To install a specific version instead of latest, download the script first and pass `-Version`:
+To install a specific version instead of latest, pass `-Version` to the downloaded script:
 
-```powershell
-irm https://raw.githubusercontent.com/anadi45/chronicle/main/scripts/install.ps1 -OutFile install.ps1
-.\install.ps1 -Version v1.2.3
+```
+curl.exe -sSL -o "$env:TEMP\chronicle-install.ps1" https://raw.githubusercontent.com/anadi45/chronicle/main/scripts/install.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\chronicle-install.ps1" -Version v1.2.3
 ```
 
 ### Manual install
