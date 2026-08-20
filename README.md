@@ -157,17 +157,17 @@ npm run test:frontend
 npm run dev
 ```
 
-`npm run dev` runs the Rust backend (`cargo run`) and the Vite dev server side by side — Vite serves the frontend on `http://localhost:1420` with hot reload and proxies `/api/*` to the backend, which binds its own port (`CHRONICLE_PORT`, default `47823`) and does **not** auto-open a browser tab for you in this mode; open `localhost:1420` yourself. Run only the backend with `npm run dev:backend`, or only the frontend with `npm run dev:vite`.
+`npm run dev` runs the Rust backend (`cargo run`) and the Vite dev server side by side — Vite serves the frontend on `http://localhost:1420` with hot reload and proxies `/api/*` to the backend, which binds its own port (`CHRONICLE_PORT`, default `47823`) and does **not** auto-open a browser tab for you in this mode; open `localhost:1420` yourself. Run only the backend with `npm run dev:backend`, or only the frontend with `npm run dev:frontend`.
 
 `npm test` runs the Rust test suite (schema, ordering, FTS, retries, queue, end-to-end processing). `npm run test:frontend` type-checks the frontend. Capture workers auto-restart on launch if capture was previously enabled.
 
-To build the single distributable binary (frontend compiled to static assets and embedded into the Rust binary at compile time — see `server/src/lib.rs`'s `FrontendAssets`):
+To build the single distributable binary (frontend compiled to static assets and embedded into the Rust binary at compile time — see `backend/src/lib.rs`'s `FrontendAssets`):
 
 ```powershell
 npm run build:release
 ```
 
-This produces `server/target/release/chronicle.exe`. Because the frontend is embedded at *compile* time, always run `npm run build` (or `build:release`, which does it for you) before a release `cargo build` — a stale `dist/` gets baked in otherwise.
+This produces `backend/target/release/chronicle.exe`. Because the frontend is embedded at *compile* time, always run `npm run build` (or `build:release`, which does it for you) before a release `cargo build` — a stale `dist/` gets baked in otherwise.
 
 Additional scripts:
 
