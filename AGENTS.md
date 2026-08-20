@@ -13,9 +13,9 @@ These rules apply to all work in this repository. They are intentionally strict 
 
 ## Daemon architecture
 
-Chronicle ships as a single standalone binary, not a packaged desktop app: one process owns capture, SQLite, local LLM inference, and an embedded HTTP server (axum) that serves both a JSON API and the built React frontend on `127.0.0.1`. There is no installer, no code-signing/notarization step, and no native app shell — the binary auto-opens the user's browser to the UI on launch and keeps running headless regardless of whether that tab stays open. See `src-tauri/src/http_api.rs` for the route table and `src-tauri/src/lib.rs` for server startup/shutdown.
+Chronicle ships as a single standalone binary, not a packaged desktop app: one process owns capture, SQLite, local LLM inference, and an embedded HTTP server (axum) that serves both a JSON API and the built React frontend on `127.0.0.1`. There is no installer, no code-signing/notarization step, and no native app shell — the binary auto-opens the user's browser to the UI on launch and keeps running headless regardless of whether that tab stays open. See `server/src/http_api.rs` for the route table and `server/src/lib.rs` for server startup/shutdown.
 
-- Keep the frontend in `src/` and native/backend code in `src-tauri/src/`.
+- Keep the frontend in `src/` and native/backend code in `server/src/`.
 - Use Rust for Windows integration, capture providers, persistence, queue workers, and privacy enforcement.
 - Keep HTTP handlers in `http_api.rs` thin: extract the request, delegate to a plain function in `tauri_application_commands.rs`/`local_inference_setup.rs` (transport-agnostic business logic — no `axum`/HTTP types), and serialize the result. Business-logic functions take `&AppState` (or `Arc<AppState>` where a handler needs to move it into a spawned task) and return `Result<T, String>`; they must stay callable from something other than an HTTP handler (a future CLI, a test) without modification.
 - There is no push/event channel to the browser (no Tauri `emit`, no WebSocket by default) — long-running operations (model downloads, data-directory moves) run fire-and-forget on a spawned task and report progress through a pollable `AppState` field + `GET` endpoint instead. Don't reach for a blocking request/response for anything that can take more than a second or two.

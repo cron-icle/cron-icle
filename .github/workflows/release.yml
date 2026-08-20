@@ -22,8 +22,8 @@ jobs:
     runs-on: windows-latest
     steps:
       # Chronicle's native inference bindings live in a sibling repository
-      # (see src-tauri/Cargo.toml's `llama-cpp-rs` path dependency, resolved
-      # as ../../llama-cpp-rs/llama-cpp-rs relative to src-tauri/) rather than
+      # (see server/Cargo.toml's `llama-cpp-rs` path dependency, resolved
+      # as ../../llama-cpp-rs/llama-cpp-rs relative to server/) rather than
       # a published crate, so both repos are checked out as siblings under
       # the runner workspace to match the layout local development expects.
       - name: Checkout chronicle
@@ -62,13 +62,13 @@ jobs:
 
       - name: Build release binary
         working-directory: chronicle
-        run: cargo build --release --bin chronicle --manifest-path src-tauri/Cargo.toml
+        run: cargo build --release --bin chronicle --manifest-path server/Cargo.toml
 
       - name: Stage release asset
         working-directory: chronicle
         run: |
           New-Item -ItemType Directory -Force -Path dist-release | Out-Null
-          Copy-Item src-tauri\target\release\chronicle.exe dist-release\chronicle-windows-x86_64.exe
+          Copy-Item server\target\release\chronicle.exe dist-release\chronicle-windows-x86_64.exe
 
       - name: Determine release tag
         id: tag

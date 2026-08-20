@@ -161,13 +161,13 @@ npm run dev
 
 `npm test` runs the Rust test suite (schema, ordering, FTS, retries, queue, end-to-end processing). `npm run test:frontend` type-checks the frontend. Capture workers auto-restart on launch if capture was previously enabled.
 
-To build the single distributable binary (frontend compiled to static assets and embedded into the Rust binary at compile time — see `src-tauri/src/lib.rs`'s `FrontendAssets`):
+To build the single distributable binary (frontend compiled to static assets and embedded into the Rust binary at compile time — see `server/src/lib.rs`'s `FrontendAssets`):
 
 ```powershell
 npm run build:release
 ```
 
-This produces `src-tauri/target/release/chronicle.exe`. Because the frontend is embedded at *compile* time, always run `npm run build` (or `build:release`, which does it for you) before a release `cargo build` — a stale `dist/` gets baked in otherwise.
+This produces `server/target/release/chronicle.exe`. Because the frontend is embedded at *compile* time, always run `npm run build` (or `build:release`, which does it for you) before a release `cargo build` — a stale `dist/` gets baked in otherwise.
 
 Additional scripts:
 

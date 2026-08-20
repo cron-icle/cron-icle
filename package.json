@@ -4,12 +4,12 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k -n backend,frontend -c blue,green \"cargo run --manifest-path src-tauri/Cargo.toml\" \"vite\"",
-    "dev:backend": "cargo run --manifest-path src-tauri/Cargo.toml",
+    "dev": "concurrently -k -n backend,frontend -c blue,green \"cargo run --manifest-path server/Cargo.toml\" \"vite\"",
+    "dev:backend": "cargo run --manifest-path server/Cargo.toml",
     "dev:vite": "vite",
     "build": "tsc -b && vite build",
-    "build:release": "npm run build && cargo build --release --manifest-path src-tauri/Cargo.toml",
-    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "build:release": "npm run build && cargo build --release --manifest-path server/Cargo.toml",
+    "test": "cargo test --manifest-path server/Cargo.toml",
     "test:frontend": "tsc -b --pretty false",
     "preview": "vite preview"
   },

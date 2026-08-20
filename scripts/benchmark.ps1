@@ -8,15 +8,15 @@ function Measure-Step([string]$Name, [scriptblock]$Action) {
 }
 
 Measure-Step "raw persistence baseline" {
-    cargo test --manifest-path src-tauri/Cargo.toml --lib --offline persists_one_thousand_events -- --nocapture
+    cargo test --manifest-path server/Cargo.toml --lib --offline persists_one_thousand_events -- --nocapture
 }
 
 Measure-Step "semantic search baseline" {
-    cargo test --manifest-path src-tauri/Cargo.toml --lib --offline fts_search_has_bounded_latency_at_one_thousand_events -- --nocapture
+    cargo test --manifest-path server/Cargo.toml --lib --offline fts_search_has_bounded_latency_at_one_thousand_events -- --nocapture
 }
 
 Measure-Step "queue throughput baseline" {
-    cargo test --manifest-path src-tauri/Cargo.toml --lib --offline busy_worker_processes_bounded_work_and_stops -- --nocapture
+    cargo test --manifest-path server/Cargo.toml --lib --offline busy_worker_processes_bounded_work_and_stops -- --nocapture
 }
 
 Measure-Step "frontend production build" {

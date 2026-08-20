@@ -173,13 +173,12 @@ pub mod engine_paths {
     }
 
     /// Where the `llama-server` binary and its DLLs live. Unlike the model
-    /// weights below, the engine itself is bundled into the app install
-    /// (see `tauri.conf.json`'s `bundle.resources` and
-    /// `src-tauri/resources/llama/`) rather than downloaded at runtime, so
-    /// this looks next to the running executable instead of under the data
-    /// directory. Falls back to the source tree's `resources/llama` when
-    /// running un-bundled (`cargo run` / `tauri dev`), where Tauri doesn't
-    /// copy resources next to the dev binary.
+    /// weights below, the engine ships alongside the daemon binary itself
+    /// (see `src-tauri/resources/llama/`) rather than downloaded at runtime,
+    /// so this looks next to the running executable instead of under the
+    /// data directory. Falls back to the source tree's `resources/llama`
+    /// when running via `cargo run`, which doesn't copy resources next to
+    /// the dev binary.
     pub fn runtime_dir() -> PathBuf {
         if let Ok(exe) = std::env::current_exe() {
             if let Some(exe_dir) = exe.parent() {

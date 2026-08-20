@@ -5,7 +5,7 @@ npm run test:frontend
 if ($LASTEXITCODE -ne 0) { throw "Frontend checks failed" }
 
 Write-Host "Running Rust tests..."
-cargo test --manifest-path src-tauri/Cargo.toml --lib --offline
+cargo test --manifest-path server/Cargo.toml --lib --offline
 if ($LASTEXITCODE -ne 0) { throw "Rust tests failed" }
 
 Write-Host "Building frontend..."
