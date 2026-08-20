@@ -1,6 +1,6 @@
 # Chronicle
 
-Chronicle is a Windows-first, local-first computer memory engine. It watches your activity — foreground apps, window titles, filesystem changes, and (opt-in) mouse clicks, keyboard metadata, and screenshots — and persists it as raw evidence on your own machine before any AI touches it. A local LLM turns that evidence into searchable semantic insights; Timeline and Search show only the processed insights, never the raw capture stream.
+Chronicle is a local-first computer memory engine for Windows, macOS, and Linux. It watches your activity — foreground apps, window titles, filesystem changes, and (opt-in) mouse clicks, keyboard metadata, and screenshots — and persists it as raw evidence on your own machine before any AI touches it. A local LLM turns that evidence into searchable semantic insights; Timeline and Search show only the processed insights, never the raw capture stream.
 
 Everything runs on-device. No cloud processing, no telemetry, no external service in the loop.
 
@@ -93,8 +93,13 @@ Native JSON output currently relies on prompt instructions plus response validat
 - No model-swap/version-upgrade path; replacing a model means removing it and downloading a replacement by hand.
 - Elevated apps, UAC/secure-desktop input, and antivirus interaction are untested.
 - Raw-event search does not currently filter by query (see `Database::recent_events`).
+- `scripts/release-smoke.ps1` and `scripts/windows-runtime-smoke.ps1` still reference the old Tauri/NSIS packaging flow and need updating for the daemon-binary build (`npm run build:release`) — not yet done. Both are also Windows-specific scripts and would need Linux/macOS equivalents.
+- Cross-platform capture status:
+  - **Windows**: full support — event-driven foreground-window hooks (`SetWinEventHook`), low-level mouse/keyboard hooks, GDI/Windows-Graphics-Capture screenshots, and UI Automation focused-element reads.
+  - **macOS / Linux (X11)**: foreground-window tracking (via `active-win-pos-rs`, polled), active-window/monitor screenshots (via `xcap`), and global mouse/keyboard capture (via `rdev`) are implemented, but **unverified** — this was written and cross-referenced against each crate's real API on a Windows-only development machine with no macOS/Linux hardware or working cross-compilation toolchain available (Linux cross-checks are blocked on a missing pkg-config/Wayland dev-library sysroot; macOS cross-checks are blocked on no C cross-compiler), so neither has actually been compiled or run for these targets yet. Treat as unverified until someone builds and runs it on real macOS/Linux hardware. UI Automation has no equivalent yet: there's no established cross-platform crate for semantic accessibility-tree reads, so `focused_element` returns `None` on these platforms (screenshots and window-title events still work).
+  - **Linux Wayland**: foreground-window polling and input capture don't work under Wayland (`active-win-pos-rs`/`rdev`'s `listen` both depend on X11 APIs); screenshot capture depends on the compositor exposing a portal `xcap` can use.
+  - macOS requires the process to be granted Accessibility permission (System Settings → Privacy & Security → Accessibility) for input capture to receive any events; this is a silent no-op, not an error, if unset.
 - `scripts/release-smoke.ps1` and `scripts/windows-runtime-smoke.ps1` still reference the old Tauri/NSIS packaging flow and need updating for the daemon-binary build (`npm run build:release`) — not yet done.
-- Capture (foreground window hooks, UI Automation, mouse/keyboard) is still Windows-only; the daemon/HTTP distribution model works cross-platform, but non-Windows capture backends don't exist yet.
 
 ## Installation
 

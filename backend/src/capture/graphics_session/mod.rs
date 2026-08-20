@@ -5,14 +5,23 @@
 //! code here — just the platform dispatch. `mac.rs` is a stub until macOS
 //! support (ScreenCaptureKit) is picked up.
 
-#[cfg(not(windows))]
-mod mac;
 #[cfg(windows)]
 mod windows;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod portable;
 
 #[cfg(windows)]
 #[allow(unused_imports)] // D3d11CaptureSession is part of the public return-type contract
 pub use windows::{capture_one_frame_png, initialize, D3d11CaptureSession};
 
-#[cfg(not(windows))]
-pub use mac::{capture_one_frame_png, initialize};
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub use portable::{capture_one_frame_png, initialize, PortableCaptureSession};
+
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+pub fn initialize(_window_handle: isize) -> Result<(), String> {
+    Err("graphics capture session is not implemented on this platform".into())
+}
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+pub fn capture_one_frame_png(_window_handle: isize) -> Result<Vec<u8>, String> {
+    Err("graphics capture session is not implemented on this platform".into())
+}

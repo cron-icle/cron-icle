@@ -7,10 +7,10 @@
 //! provider contract, and thread lifecycle); the actual OS integration lives
 //! in `windows.rs`, with `mac.rs` reserved for a future macOS provider.
 
-#[cfg(not(windows))]
-mod mac;
 #[cfg(windows)]
 mod windows;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod portable;
 
 use crate::persistence::sqlite::RawEvent;
 use chrono::Utc;
@@ -201,7 +201,19 @@ pub fn start_foreground_loop(
     })
 }
 
-#[cfg(not(windows))]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub fn start_foreground_loop(
+    database: Arc<std::sync::Mutex<crate::persistence::sqlite::Database>>,
+    stop: Arc<AtomicBool>,
+    settings: Arc<std::sync::Mutex<CaptureSettings>>,
+    screenshot_cache: Arc<std::sync::Mutex<crate::persistence::writer::ScreenshotCache>>,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        portable::run_foreground_poll_loop(database, stop, settings, screenshot_cache);
+    })
+}
+
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 pub fn start_foreground_loop(
     _database: Arc<std::sync::Mutex<crate::persistence::sqlite::Database>>,
     stop: Arc<AtomicBool>,

@@ -6,18 +6,18 @@
 //! window capture call itself is OS-specific: the real implementation is in
 //! `windows.rs`, with `mac.rs` reserved for a future macOS provider.
 
-#[cfg(not(windows))]
-mod mac;
 #[cfg(windows)]
 mod windows;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod portable;
 
 #[cfg(windows)]
 #[allow(unused_imports)] // exercised by the graphics_capture_probe_is_safe_for_invalid_handle test
 pub use windows::{graphics_capture_item_available, WindowsActiveWindowScreenshotProvider as PlatformActiveWindowScreenshotProvider};
 
-#[cfg(not(windows))]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[allow(unused_imports)]
-pub use mac::{graphics_capture_item_available, MacActiveWindowScreenshotProvider as PlatformActiveWindowScreenshotProvider};
+pub use portable::{graphics_capture_item_available, PortableActiveWindowScreenshotProvider as PlatformActiveWindowScreenshotProvider};
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

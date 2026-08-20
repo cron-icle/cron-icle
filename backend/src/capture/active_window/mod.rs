@@ -7,16 +7,21 @@
 //! encoder below is pure and shared by both the GDI path and the D3D11 path
 //! in `windows_graphics_capture_session`.
 
-#[cfg(not(windows))]
-mod mac;
 #[cfg(windows)]
 mod windows;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod portable;
 
 #[cfg(windows)]
 pub use windows::capture_window_png;
 
-#[cfg(not(windows))]
-pub use mac::capture_window_png;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub use portable::capture_window_png;
+
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+pub fn capture_window_png(_window_handle: isize) -> Result<Vec<u8>, String> {
+    Err("active-window screenshot capture is not implemented on this platform".into())
+}
 
 pub(crate) fn encode_png_rgba(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, String> {
     if rgba.len() != width as usize * height as usize * 4 {

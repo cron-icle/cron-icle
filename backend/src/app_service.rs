@@ -76,10 +76,7 @@ pub fn capture_active_window_screenshot(window_handle: isize) -> Result<Vec<u8>,
 }
 
 pub fn graphics_capture_session_available(window_handle: isize) -> Result<bool, String> {
-    crate::capture::graphics_session::initialize(window_handle).map(|capture| {
-        let _ = (&capture.frame_pool, &capture.session);
-        true
-    })
+    crate::capture::graphics_session::initialize(window_handle).map(|_session| true)
 }
 
 pub async fn recent_event_count(state: &AppState) -> Result<i64, String> {

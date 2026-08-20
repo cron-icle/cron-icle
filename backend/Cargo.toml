@@ -36,3 +36,8 @@ rfd = "0.17.2"
 llama-cpp-rs = { path = "../../llama-cpp-rs/llama-cpp-rs", version = "0.1.0", features = ["mtmd"] }
 encoding_rs = "0.8.35"
 mime_guess = "2"
+
+[target."cfg(not(windows))".dependencies]
+active-win-pos-rs = "0.11.0"
+rdev = "0.5.3"
+xcap = "0.9.8"

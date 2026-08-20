@@ -7,16 +7,39 @@
 //! is OS-specific and lives in `windows.rs` (real implementation) and
 //! `mac.rs` (not yet implemented).
 
-#[cfg(not(windows))]
-mod mac;
 #[cfg(windows)]
 mod windows;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod portable;
 
 #[cfg(windows)]
 pub use windows::{start_keyboard_hook, start_mouse_hook};
 
-#[cfg(not(windows))]
-pub use mac::{start_keyboard_hook, start_mouse_hook};
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub use portable::{start_keyboard_hook, start_mouse_hook};
+
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+pub fn start_keyboard_hook(
+    _writer: std::sync::mpsc::Sender<RawEvent>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    })
+}
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+pub fn start_mouse_hook(
+    _writer: std::sync::mpsc::Sender<RawEvent>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    })
+}
 
 use crate::persistence::sqlite::RawEvent;
 use chrono::Utc;

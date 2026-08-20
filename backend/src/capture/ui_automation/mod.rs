@@ -7,10 +7,10 @@
 //! Windows-only (`windows.rs`); `mac.rs` is a stub until an Accessibility-API
 //! based provider is implemented.
 
-#[cfg(not(windows))]
-mod mac;
 #[cfg(windows)]
 mod windows;
+#[cfg(not(windows))]
+mod portable;
 
 use crate::persistence::sqlite::RawEvent;
 use chrono::Utc;
@@ -69,7 +69,7 @@ impl UiAutomationProvider for WindowsUiAutomationProvider {
         }
         #[cfg(not(windows))]
         {
-            mac::focused_element()
+            portable::focused_element()
         }
     }
 }
