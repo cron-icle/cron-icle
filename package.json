@@ -1,28 +1,18 @@
 {
-  "name": "chronicle-desktop",
+  "name": "chronicle",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "tauri dev",
-    "dev:vite": "vite",
-    "build": "tsc -b && vite build",
-    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "test:frontend": "tsc -b --pretty false",
-    "preview": "vite preview",
-    "tauri": "tauri"
-  },
-  "dependencies": {
-    "@tauri-apps/api": "^2.5.0",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "dev": "concurrently -k -n backend,frontend -c blue,green \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cargo run --manifest-path backend/Cargo.toml",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "build:release": "npm run build && cargo build --release --manifest-path backend/Cargo.toml",
+    "test": "cargo test --manifest-path backend/Cargo.toml",
+    "test:frontend": "npm --prefix frontend run test"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.5.0",
-    "@types/react": "^19.1.0",
-    "@types/react-dom": "^19.1.0",
-    "@vitejs/plugin-react": "^4.4.1",
-    "typescript": "^5.8.3",
-    "vite": "^6.3.5"
+    "concurrently": "^9.1.0"
   }
 }

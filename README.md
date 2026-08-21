@@ -1,10 +1,14 @@
 # Chronicle
 
-Chronicle is a Windows-first, local-first computer memory engine. It watches your activity — foreground apps, window titles, filesystem changes, and (opt-in) mouse clicks, keyboard metadata, and screenshots — and persists it as raw evidence on your own machine before any AI touches it. A local LLM turns that evidence into searchable semantic insights; Timeline and Search show only the processed insights, never the raw capture stream.
+Chronicle is a local-first computer memory engine for Windows, macOS, and Linux. It watches your activity — foreground apps, window titles, filesystem changes, and (opt-in) mouse clicks, keyboard metadata, and screenshots — and persists it as raw evidence on your own machine before any AI touches it. A local LLM turns that evidence into searchable semantic insights; Timeline and Search show only the processed insights, never the raw capture stream.
 
 Everything runs on-device. No cloud processing, no telemetry, no external service in the loop.
 
+Chronicle ships as a single standalone binary — no installer, no code-signing/notarization, distributed the way Postgres or Redis are. See [Installation](#installation) to run it.
+
 ## Architecture
+
+Chronicle is one long-running process: capture, SQLite persistence, local LLM inference, and an embedded HTTP server all live in the same binary. The server serves a JSON API and the built React frontend on `127.0.0.1`; the binary opens that URL in your default browser on launch, and everything keeps running whether or not the tab stays open. There's no native app shell and no installer step — this is what makes distribution unsigned-and-unnotarized-friendly (see [Installation](#installation)).
 
 Capture and AI processing are decoupled — a slow or unavailable model never blocks persistence, and a busy database never stalls an input hook.
 
@@ -54,11 +58,13 @@ flowchart TB
 
 Text analysis batches up to 8 events per numbered prompt with an index-checked response; embeddings batch natively by packing every input into one context as its own sequence. The vision `llama-server` speaks llama.cpp's OpenAI-compatible API on `127.0.0.1`, overridable via `CHRONICLE_LLAMA_HOST` / `CHRONICLE_LLAMA_CHAT_PORT` / `CHRONICLE_LLAMA_EMBED_PORT`, and is launched only if its files are present and it isn't already listening. Capture and persistence work fully with none of this set up — the AI queue simply retries until setup completes.
 
+Model downloads and the data-directory move are the two long-running operations in the app; since there's no push channel to the browser, both run fire-and-forget on a background task and report progress through a polled `GET /api/local-ai/progress` / `GET /api/data-directory/move-progress` endpoint instead of a blocking response.
+
 Native JSON output currently relies on prompt instructions plus response validation/retry, not grammar-constrained decoding (a hand-written GBNF grammar crashed this llama.cpp build's grammar engine outright and was reverted rather than shipped) — a known gap tracked for a schema-driven grammar follow-up.
 
 **Resource-aware scheduling** (`hardware_profiler` + `memory_planner`): every model load is checked against real, current available RAM (`GlobalMemoryStatusEx`) before it happens — context size steps down through a ladder (8192 → 4096 → 2048 → 1024) until a size is found that fits with headroom to spare, and a load is refused outright rather than risking an OOM if nothing fits. Per-request context size also scales with what the prompt actually needs (a single short event vs. an 8-item batch) instead of always requesting the maximum. Batch size scales the same way against available memory (`adaptive_batch_size`). None of this touches GPU sizing yet — the bundled engine is CPU-only, so GPU is always reported absent rather than guessed at.
 
-**Model lifecycle**: the two engines have different residency policies. `EmbeddingEngine` stays resident once loaded — it's small and called on every processed event. `GenerationEngine` (the multi-gigabyte chat/vision model) unloads after 60s of inactivity (`GENERATION_KEEP_ALIVE`), checked on every idle tick of the AI worker's poll loop, and transparently reloads (with a larger context if a new request needs more than the last load had) on the next request — trading a small reload cost for not holding gigabytes of RAM during the long stretches between capture events. `inference_telemetry` (a Tauri command) exposes the current hardware snapshot, the generation engine's residency state (`unloaded`/`ready`/`idle`), and the batch size that would currently be chosen.
+**Model lifecycle**: the two engines have different residency policies. `EmbeddingEngine` stays resident once loaded — it's small and called on every processed event. `GenerationEngine` (the multi-gigabyte chat/vision model) unloads after 60s of inactivity (`GENERATION_KEEP_ALIVE`), checked on every idle tick of the AI worker's poll loop, and transparently reloads (with a larger context if a new request needs more than the last load had) on the next request — trading a small reload cost for not holding gigabytes of RAM during the long stretches between capture events. `GET /api/inference/telemetry` exposes the current hardware snapshot, the generation engine's residency state (`unloaded`/`ready`/`idle`), and the batch size that would currently be chosen.
 
 ## Privacy
 
@@ -87,10 +93,61 @@ Native JSON output currently relies on prompt instructions plus response validat
 - No model-swap/version-upgrade path; replacing a model means removing it and downloading a replacement by hand.
 - Elevated apps, UAC/secure-desktop input, and antivirus interaction are untested.
 - Raw-event search does not currently filter by query (see `Database::recent_events`).
+- `scripts/release-smoke.ps1` and `scripts/windows-runtime-smoke.ps1` still reference the old Tauri/NSIS packaging flow and need updating for the daemon-binary build (`npm run build:release`) — not yet done. Both are also Windows-specific scripts and would need Linux/macOS equivalents.
+- Cross-platform capture status:
+  - **Windows**: full support — event-driven foreground-window hooks (`SetWinEventHook`), low-level mouse/keyboard hooks, GDI/Windows-Graphics-Capture screenshots, and UI Automation focused-element reads.
+  - **macOS / Linux (X11)**: foreground-window tracking (via `active-win-pos-rs`, polled), active-window/monitor screenshots (via `xcap`), and global mouse/keyboard capture (via `rdev`) are implemented, but **unverified** — this was written and cross-referenced against each crate's real API on a Windows-only development machine with no macOS/Linux hardware or working cross-compilation toolchain available (Linux cross-checks are blocked on a missing pkg-config/Wayland dev-library sysroot; macOS cross-checks are blocked on no C cross-compiler), so neither has actually been compiled or run for these targets yet. Treat as unverified until someone builds and runs it on real macOS/Linux hardware. UI Automation has no equivalent yet: there's no established cross-platform crate for semantic accessibility-tree reads, so `focused_element` returns `None` on these platforms (screenshots and window-title events still work).
+  - **Linux Wayland**: foreground-window polling and input capture don't work under Wayland (`active-win-pos-rs`/`rdev`'s `listen` both depend on X11 APIs); screenshot capture depends on the compositor exposing a portal `xcap` can use.
+  - macOS requires the process to be granted Accessibility permission (System Settings → Privacy & Security → Accessibility) for input capture to receive any events; this is a silent no-op, not an error, if unset.
+- `scripts/release-smoke.ps1` and `scripts/windows-runtime-smoke.ps1` still reference the old Tauri/NSIS packaging flow and need updating for the daemon-binary build (`npm run build:release`) — not yet done.
+
+## Installation
+
+Chronicle is a single executable — install it, run it, and it opens in your browser. There's no installer, no admin prompt, and no code-signing/notarization step, so your OS will flag it as an unrecognized binary the first time; that's expected for an unsigned indie tool and safe to bypass.
+
+### One-line install (curl)
+
+Windows 10/11 ships `curl.exe` out of the box. Run this from any terminal (PowerShell, cmd, Windows Terminal):
+
+```
+curl.exe -sSL -o "$env:TEMP\chronicle-install.ps1" https://raw.githubusercontent.com/anadi45/chronicle/main/scripts/install.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\chronicle-install.ps1"
+```
+
+(This downloads the script to a temp file and runs it with `-File` rather than piping into `powershell -Command -` — Windows PowerShell 5.1 silently no-ops a multi-line script fed that way instead of erroring, so download-then-run is the form that's actually verified to work.)
+
+This installs the latest release binary from [GitHub Releases](https://github.com/anadi45/chronicle/releases) (built and published automatically by `.github/workflows/release.yml` on every `vX.Y.Z` tag) to `%LOCALAPPDATA%\Programs\Chronicle\chronicle.exe` and adds that folder to your user `PATH`. Open a **new** terminal afterward and run:
+
+```powershell
+chronicle
+```
+
+To install a specific version instead of latest, pass `-Version` to the downloaded script:
+
+```
+curl.exe -sSL -o "$env:TEMP\chronicle-install.ps1" https://raw.githubusercontent.com/anadi45/chronicle/main/scripts/install.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\chronicle-install.ps1" -Version v1.2.3
+```
+
+### Manual install
+
+Prefer not to run someone's install script? Download the binary yourself:
+
+1. Grab `chronicle-windows-x86_64.exe` from the [latest release](https://github.com/anadi45/chronicle/releases/latest).
+2. Run it from a terminal or by double-clicking it:
+   ```powershell
+   .\chronicle-windows-x86_64.exe
+   ```
+
+### After installing
+
+- Windows SmartScreen will likely show "Windows protected your PC" on first run — click **More info → Run anyway**. This is a reputation warning, not a malware detection; it goes away over time as more people run the same binary, and can be skipped entirely by building from source yourself (see [Development](#development)).
+- Your default browser opens automatically to `http://127.0.0.1:47823` (override the port with the `CHRONICLE_PORT` environment variable, e.g. `$env:CHRONICLE_PORT=8123; chronicle`; skip the auto-open with `CHRONICLE_NO_OPEN=1`). Capture and local AI setup are configured from the **Settings** page inside the app.
+- Chronicle keeps running in that terminal/background process as long as you want capture active — closing the browser tab does not stop it. Stop it with Ctrl+C in the terminal it's running in (or Task Manager if launched detached); this cleanly stops capture and any running local-model engine processes before exiting.
+- Chronicle stores everything — the event database and downloaded models — in a data directory you choose on first run from **Settings**. Nothing is written anywhere before you choose one; until then it runs in a temporary, non-persistent mode.
 
 ## Development
 
-Building the Rust backend compiles llama.cpp from source (for the native inference bindings), which needs **CMake** and **LLVM/libclang** (for `bindgen`) on `PATH`, in addition to the MSVC Build Tools Tauri already requires:
+Building the Rust backend compiles llama.cpp from source (for the native inference bindings), which needs **CMake** and **LLVM/libclang** (for `bindgen`) on `PATH`, in addition to the MSVC Build Tools:
 
 ```powershell
 winget install --id Kitware.CMake -e
@@ -102,20 +159,28 @@ npm install
 npm run build
 npm test
 npm run test:frontend
-npm run tauri dev
+npm run dev
 ```
 
-`npm test` runs the Rust test suite (schema, ordering, FTS, retries, queue, end-to-end processing). `npm run test:frontend` type-checks the frontend. Capture workers auto-restart on launch if capture was previously enabled. The Tauri CLI and Windows WebView2 runtime are required for the desktop app.
+`npm run dev` runs the Rust backend (`cargo run`) and the Vite dev server side by side — Vite serves the frontend on `http://localhost:1420` with hot reload and proxies `/api/*` to the backend, which binds its own port (`CHRONICLE_PORT`, default `47823`) and does **not** auto-open a browser tab for you in this mode; open `localhost:1420` yourself. Run only the backend with `npm run dev:backend`, or only the frontend with `npm run dev:frontend`.
+
+`npm test` runs the Rust test suite (schema, ordering, FTS, retries, queue, end-to-end processing). `npm run test:frontend` type-checks the frontend. Capture workers auto-restart on launch if capture was previously enabled.
+
+To build the single distributable binary (frontend compiled to static assets and embedded into the Rust binary at compile time — see `backend/src/lib.rs`'s `FrontendAssets`):
+
+```powershell
+npm run build:release
+```
+
+This produces `backend/target/release/chronicle.exe`. Because the frontend is embedded at *compile* time, always run `npm run build` (or `build:release`, which does it for you) before a release `cargo build` — a stale `dist/` gets baked in otherwise.
 
 Additional scripts:
 
 | Script | Purpose |
 | --- | --- |
-| `scripts/release-smoke.ps1` | Frontend checks, Rust tests, production build, NSIS packaging, runtime startup check |
-| `scripts/windows-runtime-smoke.ps1` | Runtime startup check only |
 | `scripts/windows-capture-acceptance.ps1` | Launches Notepad and verifies foreground events reach SQLite (requires Python 3) |
 | `scripts/benchmark.ps1` | Persistence, search, queue, and frontend timing baselines |
 
-### Windows startup troubleshooting
+### Startup troubleshooting
 
-If the Rust build succeeds but the app exits with `0xc0000139 (STATUS_ENTRYPOINT_NOT_FOUND)`, ensure `WebView2Loader.dll` and the generated `chronicle_lib.dll` are available in both `src-tauri/target/debug` and `src-tauri` when launching through Cargo, and that the WebView2 Runtime is installed.
+If the binary logs `failed to bind — is another Chronicle instance already running?` and exits, another Chronicle process (or something else) already owns that port — stop it, or set `CHRONICLE_PORT` to a free one. If the browser doesn't open automatically, check the terminal for the `Chronicle is running at http://127.0.0.1:PORT` log line and open that URL by hand.

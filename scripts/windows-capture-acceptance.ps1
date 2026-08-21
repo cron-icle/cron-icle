@@ -1,5 +1,5 @@
 param(
-    [string]$Executable = "$PSScriptRoot\..\src-tauri\target\release\chronicle.exe",
+    [string]$Executable = "$PSScriptRoot\..\backend\target\release\chronicle.exe",
     [string]$Database = "$PSScriptRoot\..\chronicle.db",
     [int]$ObservationSeconds = 8
 )

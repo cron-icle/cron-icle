@@ -11,16 +11,19 @@ These rules apply to all work in this repository. They are intentionally strict 
 - Keyboard capture is opt-in. Never persist passwords, credentials, banking/payment input, secure-desktop input, UAC input, or configured excluded applications.
 - Do not add cloud processing, telemetry, automatic updates, browser extensions, or unrestricted filesystem scanning without explicit product direction.
 
-## Tauri architecture
+## Daemon architecture
 
-- Keep the frontend in `src/` and native/backend code in `src-tauri/src/`.
+Chronicle ships as a single standalone binary, not a packaged desktop app: one process owns capture, SQLite, local LLM inference, and an embedded HTTP server (axum) that serves both a JSON API and the built React frontend on `127.0.0.1`. There is no installer, no code-signing/notarization step, and no native app shell — the binary auto-opens the user's browser to the UI on launch and keeps running headless regardless of whether that tab stays open. See `backend/src/http/` for the route table and `backend/src/lib.rs` for server startup/shutdown.
+
+- Keep the frontend in `frontend/src/` and native/backend code in `backend/src/`.
 - Use Rust for Windows integration, capture providers, persistence, queue workers, and privacy enforcement.
-- Keep Tauri commands thin: validate input, delegate to a named service/module, and return serializable results.
-- Name modules by responsibility, not vague names. Prefer `activity_capture`, `local_sqlite_event_database`, `asynchronous_processing_queue`, and `tauri_application_commands` over `capture`, `db`, `queue`, or `commands`.
-- Organize platform-specific Rust providers as folders with a shared `mod.rs` contract and platform files such as `windows.rs` and `mac.rs` (see `activity_capture/`, `input_capture/`, `transient_screenshot_capture/`, `windows_active_window_screenshot/`, `windows_graphics_capture_session/`, `windows_ui_automation_capture/`). Keep Windows API calls out of shared contracts.
+- Keep HTTP handlers in `backend/src/http/*.rs` thin: extract the request, delegate to a plain function in `app_service.rs`/`inference/setup.rs` (transport-agnostic business logic — no `axum`/HTTP types), and serialize the result. Business-logic functions take `&AppState` (or `Arc<AppState>` where a handler needs to move it into a spawned task) and return `Result<T, String>`; they must stay callable from something other than an HTTP handler (a future CLI, a test) without modification.
+- There is no push/event channel to the browser (no Tauri `emit`, no WebSocket by default) — long-running operations (model downloads, data-directory moves) run fire-and-forget on a spawned task and report progress through a pollable `AppState` field + `GET` endpoint instead. Don't reach for a blocking request/response for anything that can take more than a second or two.
+- Name modules by responsibility, not vague names. Prefer `capture::activity`, `persistence::sqlite`, `processing::queue`, and `app_service` over `capture`, `db`, `queue`, or `commands`.
+- Organize platform-specific Rust providers as folders with a shared `mod.rs` contract, `windows.rs` for native Win32/WinRT integration, and `portable.rs` for the shared macOS+Linux implementation (see `capture/activity/`, `capture/input/`, `capture/screenshot/`, `capture/active_window/`, `capture/graphics_session/`). Prefer one `portable.rs` over separate `mac.rs`/`linux.rs` files when a single well-maintained crate (`xcap`, `rdev`, `active-win-pos-rs`) already covers both — only split them if their real implementations diverge enough to need it. `capture/ui_automation/` is the current exception: it still has no macOS/Linux implementation (no established crate for cross-platform accessibility-tree reads), so its `portable.rs` is an honest `Ok(None)` stub — see README's Known limitations before assuming this module works off Windows. Keep Windows API calls out of shared contracts.
 - Add module-level Rustdoc for every native module describing ownership, threading, privacy, and failure behavior.
 - Use typed structs/enums for event types, queue statuses, settings, and command payloads. Avoid unvalidated stringly-typed state when an enum is practical.
-- Keep Windows-only APIs behind `cfg(windows)` and provide a safe non-Windows fallback for compilation/tests.
+- Keep Windows-only APIs behind `cfg(windows)` and macOS/Linux-only APIs behind their respective `cfg(target_os = ...)`, with a safe fallback for any other target so the crate still compiles/tests everywhere.
 - Never use `unwrap()` in capture loops, command handlers, or worker threads. Convert failures into logged, non-fatal results where capture can continue.
 - Do not hold a database mutex across sleeps, Windows API waits, model calls, or filesystem operations.
 - All background threads need a stop signal and must be joined or safely detached during application shutdown.
