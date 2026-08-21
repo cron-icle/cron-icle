@@ -1,6 +1,6 @@
-# Chronicle agent rules
+# Cronicle agent rules
 
-These rules apply to all work in this repository. They are intentionally strict because Chronicle observes sensitive computer activity and runs native Windows code.
+These rules apply to all work in this repository. They are intentionally strict because Cronicle observes sensitive computer activity and runs native Windows code.
 
 ## Product invariants
 
@@ -13,7 +13,7 @@ These rules apply to all work in this repository. They are intentionally strict 
 
 ## Daemon architecture
 
-Chronicle ships as a single standalone binary, not a packaged desktop app: one process owns capture, SQLite, local LLM inference, and an embedded HTTP server (axum) that serves both a JSON API and the built React frontend on `127.0.0.1`. There is no installer, no code-signing/notarization step, and no native app shell — the binary auto-opens the user's browser to the UI on launch and keeps running headless regardless of whether that tab stays open. See `backend/src/http/` for the route table and `backend/src/lib.rs` for server startup/shutdown.
+Cronicle ships as a single standalone binary, not a packaged desktop app: one process owns capture, SQLite, local LLM inference, and an embedded HTTP server (axum) that serves both a JSON API and the built React frontend on `127.0.0.1`. There is no installer, no code-signing/notarization step, and no native app shell — the binary auto-opens the user's browser to the UI on launch and keeps running headless regardless of whether that tab stays open. See `backend/src/http/` for the route table and `backend/src/lib.rs` for server startup/shutdown.
 
 - Keep the frontend in `frontend/src/` and native/backend code in `backend/src/`.
 - Use Rust for Windows integration, capture providers, persistence, queue workers, and privacy enforcement.

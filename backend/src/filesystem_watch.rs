@@ -110,7 +110,7 @@ fn handle_event(database: &Arc<Mutex<Database>>, settings: &Arc<Mutex<CaptureSet
         if path_is_excluded(path, &excluded_paths) {
             continue;
         }
-        // Directories generate their own change notifications but Chronicle
+        // Directories generate their own change notifications but Cronicle
         // records file-level evidence only.
         if path.is_dir() {
             continue;

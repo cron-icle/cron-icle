@@ -1,6 +1,6 @@
 name: Release
 
-# Builds the standalone Chronicle binary and attaches it to a GitHub Release
+# Builds the standalone Cronicle binary and attaches it to a GitHub Release
 # whenever a version tag (v1.2.3) is pushed. There is no code-signing or
 # notarization step by design (see README's Installation section) — this is
 # what makes `scripts/install.ps1` able to fetch a binary and run it directly.
@@ -21,15 +21,15 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      # Chronicle's native inference bindings live in a sibling repository
+      # Cronicle's native inference bindings live in a sibling repository
       # (see backend/Cargo.toml's `llama-cpp-rs` path dependency, resolved
       # as ../../llama-cpp-rs/llama-cpp-rs relative to backend/) rather than
       # a published crate, so both repos are checked out as siblings under
       # the runner workspace to match the layout local development expects.
-      - name: Checkout chronicle
+      - name: Checkout cronicle
         uses: actions/checkout@v4
         with:
-          path: chronicle
+          path: cronicle
 
       - name: Checkout llama-cpp-rs
         uses: actions/checkout@v4
@@ -45,7 +45,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: chronicle/package-lock.json
+          cache-dependency-path: cronicle/package-lock.json
 
       - name: Install CMake and LLVM (bindgen needs libclang)
         run: |
@@ -53,22 +53,22 @@ jobs:
           echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
 
       - name: Install frontend dependencies
-        working-directory: chronicle
+        working-directory: cronicle
         run: npm install
 
       - name: Build frontend
-        working-directory: chronicle
+        working-directory: cronicle
         run: npm run build
 
       - name: Build release binary
-        working-directory: chronicle
-        run: cargo build --release --bin chronicle --manifest-path backend/Cargo.toml
+        working-directory: cronicle
+        run: cargo build --release --bin cronicle --manifest-path backend/Cargo.toml
 
       - name: Stage release asset
-        working-directory: chronicle
+        working-directory: cronicle
         run: |
           New-Item -ItemType Directory -Force -Path dist-release | Out-Null
-          Copy-Item backend\target\release\chronicle.exe dist-release\chronicle-windows-x86_64.exe
+          Copy-Item backend\target\release\cronicle.exe dist-release\cronicle-windows-x86_64.exe
 
       - name: Determine release tag
         id: tag
@@ -84,5 +84,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
-          files: chronicle/dist-release/chronicle-windows-x86_64.exe
+          files: cronicle/dist-release/cronicle-windows-x86_64.exe
           generate_release_notes: true

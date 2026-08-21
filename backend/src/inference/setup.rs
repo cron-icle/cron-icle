@@ -1,10 +1,10 @@
 //! One-time local AI setup, driven from inside the app.
 //!
-//! Chronicle's semantic analysis and embeddings run on a bundled llama.cpp
+//! Cronicle's semantic analysis and embeddings run on a bundled llama.cpp
 //! engine (`llama-server`) rather than a separately installed application:
 //! nothing here shows up in the Start Menu, the system tray, or Windows'
 //! installed-apps list. The `llama-server` binary itself ships alongside the
-//! Chronicle binary (see `backend/resources/llama` and
+//! Cronicle binary (see `backend/resources/llama` and
 //! `model_provider::engine_paths::runtime_dir`) — nothing here
 //! downloads it. This module only downloads the GGUF model files (Gemma 3
 //! for chat/vision, EmbeddingGemma for embeddings, both from their official
@@ -122,7 +122,7 @@ fn download_with_progress(
     dest: &Path,
     cancel: &AtomicBool,
 ) -> Result<(), String> {
-    tracing::info!(target: "chronicle::local_inference_setup", "downloading {label} from {url}");
+    tracing::info!(target: "cronicle::local_inference_setup", "downloading {label} from {url}");
     let response = shared_agent()
         .get(url)
         .call()
@@ -164,7 +164,7 @@ fn download_with_progress(
     drop(file);
     std::fs::rename(&tmp_path, dest)
         .map_err(|error| format!("failed to finalize {label}: {error}"))?;
-    tracing::info!(target: "chronicle::local_inference_setup", "{label} downloaded ({downloaded} bytes)");
+    tracing::info!(target: "cronicle::local_inference_setup", "{label} downloaded ({downloaded} bytes)");
     Ok(())
 }
 
@@ -268,7 +268,7 @@ fn remove_file_if_exists(path: &Path) -> Result<(), String> {
 /// so deleting them out from under it would fail.
 pub async fn setup_remove_chat_model(state: &AppState) -> Result<(), String> {
     stop_process(&state.llama_chat_process);
-    tracing::info!(target: "chronicle::local_inference_setup", "removing Gemma 3 chat model");
+    tracing::info!(target: "cronicle::local_inference_setup", "removing Gemma 3 chat model");
     tokio::task::spawn_blocking(|| {
         if let Some(chat_model) = engine_paths::chat_model() {
             remove_file_if_exists(&chat_model)?;
@@ -286,7 +286,7 @@ pub async fn setup_remove_chat_model(state: &AppState) -> Result<(), String> {
 /// the same file-locking reason as `setup_remove_chat_model`.
 pub async fn setup_remove_embed_model(state: &AppState) -> Result<(), String> {
     stop_process(&state.llama_embed_process);
-    tracing::info!(target: "chronicle::local_inference_setup", "removing EmbeddingGemma model");
+    tracing::info!(target: "cronicle::local_inference_setup", "removing EmbeddingGemma model");
     tokio::task::spawn_blocking(|| match engine_paths::embed_model() {
         Some(embed_model) => remove_file_if_exists(&embed_model),
         None => Ok(()),

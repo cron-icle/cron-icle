@@ -1,14 +1,14 @@
-# Chronicle
+# Cronicle
 
-Chronicle is a local-first computer memory engine for Windows, macOS, and Linux. It watches your activity — foreground apps, window titles, filesystem changes, and (opt-in) mouse clicks, keyboard metadata, and screenshots — and persists it as raw evidence on your own machine before any AI touches it. A local LLM turns that evidence into searchable semantic insights; Timeline and Search show only the processed insights, never the raw capture stream.
+Cronicle is a local-first computer memory engine for Windows, macOS, and Linux. It watches your activity — foreground apps, window titles, filesystem changes, and (opt-in) mouse clicks, keyboard metadata, and screenshots — and persists it as raw evidence on your own machine before any AI touches it. A local LLM turns that evidence into searchable semantic insights; Timeline and Search show only the processed insights, never the raw capture stream.
 
 Everything runs on-device. No cloud processing, no telemetry, no external service in the loop.
 
-Chronicle ships as a single standalone binary — no installer, no code-signing/notarization, distributed the way Postgres or Redis are. See [Installation](#installation) to run it.
+Cronicle ships as a single standalone binary — no installer, no code-signing/notarization, distributed the way Postgres or Redis are. See [Installation](#installation) to run it.
 
 ## Architecture
 
-Chronicle is one long-running process: capture, SQLite persistence, local LLM inference, and an embedded HTTP server all live in the same binary. The server serves a JSON API and the built React frontend on `127.0.0.1`; the binary opens that URL in your default browser on launch, and everything keeps running whether or not the tab stays open. There's no native app shell and no installer step — this is what makes distribution unsigned-and-unnotarized-friendly (see [Installation](#installation)).
+Cronicle is one long-running process: capture, SQLite persistence, local LLM inference, and an embedded HTTP server all live in the same binary. The server serves a JSON API and the built React frontend on `127.0.0.1`; the binary opens that URL in your default browser on launch, and everything keeps running whether or not the tab stays open. There's no native app shell and no installer step — this is what makes distribution unsigned-and-unnotarized-friendly (see [Installation](#installation)).
 
 Capture and AI processing are decoupled — a slow or unavailable model never blocks persistence, and a busy database never stalls an input hook.
 
@@ -56,7 +56,7 @@ flowchart TB
     Worker -->|vision| Chat
 ```
 
-Text analysis batches up to 8 events per numbered prompt with an index-checked response; embeddings batch natively by packing every input into one context as its own sequence. The vision `llama-server` speaks llama.cpp's OpenAI-compatible API on `127.0.0.1`, overridable via `CHRONICLE_LLAMA_HOST` / `CHRONICLE_LLAMA_CHAT_PORT` / `CHRONICLE_LLAMA_EMBED_PORT`, and is launched only if its files are present and it isn't already listening. Capture and persistence work fully with none of this set up — the AI queue simply retries until setup completes.
+Text analysis batches up to 8 events per numbered prompt with an index-checked response; embeddings batch natively by packing every input into one context as its own sequence. The vision `llama-server` speaks llama.cpp's OpenAI-compatible API on `127.0.0.1`, overridable via `CRONICLE_LLAMA_HOST` / `CRONICLE_LLAMA_CHAT_PORT` / `CRONICLE_LLAMA_EMBED_PORT`, and is launched only if its files are present and it isn't already listening. Capture and persistence work fully with none of this set up — the AI queue simply retries until setup completes.
 
 Model downloads and the data-directory move are the two long-running operations in the app; since there's no push channel to the browser, both run fire-and-forget on a background task and report progress through a polled `GET /api/local-ai/progress` / `GET /api/data-directory/move-progress` endpoint instead of a blocking response.
 
@@ -103,47 +103,47 @@ Native JSON output currently relies on prompt instructions plus response validat
 
 ## Installation
 
-Chronicle is a single executable — install it, run it, and it opens in your browser. There's no installer, no admin prompt, and no code-signing/notarization step, so your OS will flag it as an unrecognized binary the first time; that's expected for an unsigned indie tool and safe to bypass.
+Cronicle is a single executable — install it, run it, and it opens in your browser. There's no installer, no admin prompt, and no code-signing/notarization step, so your OS will flag it as an unrecognized binary the first time; that's expected for an unsigned indie tool and safe to bypass.
 
 ### One-line install (curl)
 
 Windows 10/11 ships `curl.exe` out of the box. Run this from any terminal (PowerShell, cmd, Windows Terminal):
 
 ```
-curl.exe -sSL -o "$env:TEMP\chronicle-install.ps1" https://raw.githubusercontent.com/anadi45/chronicle/main/scripts/install.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\chronicle-install.ps1"
+curl.exe -sSL -o "$env:TEMP\cronicle-install.ps1" https://raw.githubusercontent.com/anadi45/cronicle/main/scripts/install.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\cronicle-install.ps1"
 ```
 
 (This downloads the script to a temp file and runs it with `-File` rather than piping into `powershell -Command -` — Windows PowerShell 5.1 silently no-ops a multi-line script fed that way instead of erroring, so download-then-run is the form that's actually verified to work.)
 
-This installs the latest release binary from [GitHub Releases](https://github.com/anadi45/chronicle/releases) (built and published automatically by `.github/workflows/release.yml` on every `vX.Y.Z` tag) to `%LOCALAPPDATA%\Programs\Chronicle\chronicle.exe` and adds that folder to your user `PATH`. Open a **new** terminal afterward and run:
+This installs the latest release binary from [GitHub Releases](https://github.com/anadi45/cronicle/releases) (built and published automatically by `.github/workflows/release.yml` on every `vX.Y.Z` tag) to `%LOCALAPPDATA%\Programs\Cronicle\cronicle.exe` and adds that folder to your user `PATH`. Open a **new** terminal afterward and run:
 
 ```powershell
-chronicle
+cronicle
 ```
 
 To install a specific version instead of latest, pass `-Version` to the downloaded script:
 
 ```
-curl.exe -sSL -o "$env:TEMP\chronicle-install.ps1" https://raw.githubusercontent.com/anadi45/chronicle/main/scripts/install.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\chronicle-install.ps1" -Version v1.2.3
+curl.exe -sSL -o "$env:TEMP\cronicle-install.ps1" https://raw.githubusercontent.com/anadi45/cronicle/main/scripts/install.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\cronicle-install.ps1" -Version v1.2.3
 ```
 
 ### Manual install
 
 Prefer not to run someone's install script? Download the binary yourself:
 
-1. Grab `chronicle-windows-x86_64.exe` from the [latest release](https://github.com/anadi45/chronicle/releases/latest).
+1. Grab `cronicle-windows-x86_64.exe` from the [latest release](https://github.com/anadi45/cronicle/releases/latest).
 2. Run it from a terminal or by double-clicking it:
    ```powershell
-   .\chronicle-windows-x86_64.exe
+   .\cronicle-windows-x86_64.exe
    ```
 
 ### After installing
 
 - Windows SmartScreen will likely show "Windows protected your PC" on first run — click **More info → Run anyway**. This is a reputation warning, not a malware detection; it goes away over time as more people run the same binary, and can be skipped entirely by building from source yourself (see [Development](#development)).
-- Your default browser opens automatically to `http://127.0.0.1:47823` (override the port with the `CHRONICLE_PORT` environment variable, e.g. `$env:CHRONICLE_PORT=8123; chronicle`; skip the auto-open with `CHRONICLE_NO_OPEN=1`). Capture and local AI setup are configured from the **Settings** page inside the app.
-- Chronicle keeps running in that terminal/background process as long as you want capture active — closing the browser tab does not stop it. Stop it with Ctrl+C in the terminal it's running in (or Task Manager if launched detached); this cleanly stops capture and any running local-model engine processes before exiting.
-- Chronicle stores everything — the event database and downloaded models — in a data directory you choose on first run from **Settings**. Nothing is written anywhere before you choose one; until then it runs in a temporary, non-persistent mode.
+- Your default browser opens automatically to `http://127.0.0.1:47823` (override the port with the `CRONICLE_PORT` environment variable, e.g. `$env:CRONICLE_PORT=8123; cronicle`; skip the auto-open with `CRONICLE_NO_OPEN=1`). Capture and local AI setup are configured from the **Settings** page inside the app.
+- Cronicle keeps running in that terminal/background process as long as you want capture active — closing the browser tab does not stop it. Stop it with Ctrl+C in the terminal it's running in (or Task Manager if launched detached); this cleanly stops capture and any running local-model engine processes before exiting.
+- Cronicle stores everything — the event database and downloaded models — in a data directory you choose on first run from **Settings**. Nothing is written anywhere before you choose one; until then it runs in a temporary, non-persistent mode.
 
 ## Development
 
@@ -162,7 +162,7 @@ npm run test:frontend
 npm run dev
 ```
 
-`npm run dev` runs the Rust backend (`cargo run`) and the Vite dev server side by side — Vite serves the frontend on `http://localhost:1420` with hot reload and proxies `/api/*` to the backend, which binds its own port (`CHRONICLE_PORT`, default `47823`) and does **not** auto-open a browser tab for you in this mode; open `localhost:1420` yourself. Run only the backend with `npm run dev:backend`, or only the frontend with `npm run dev:frontend`.
+`npm run dev` runs the Rust backend (`cargo run`) and the Vite dev server side by side — Vite serves the frontend on `http://localhost:1420` with hot reload and proxies `/api/*` to the backend, which binds its own port (`CRONICLE_PORT`, default `47823`) and does **not** auto-open a browser tab for you in this mode; open `localhost:1420` yourself. Run only the backend with `npm run dev:backend`, or only the frontend with `npm run dev:frontend`.
 
 `npm test` runs the Rust test suite (schema, ordering, FTS, retries, queue, end-to-end processing). `npm run test:frontend` type-checks the frontend. Capture workers auto-restart on launch if capture was previously enabled.
 
@@ -172,7 +172,7 @@ To build the single distributable binary (frontend compiled to static assets and
 npm run build:release
 ```
 
-This produces `backend/target/release/chronicle.exe`. Because the frontend is embedded at *compile* time, always run `npm run build` (or `build:release`, which does it for you) before a release `cargo build` — a stale `dist/` gets baked in otherwise.
+This produces `backend/target/release/cronicle.exe`. Because the frontend is embedded at *compile* time, always run `npm run build` (or `build:release`, which does it for you) before a release `cargo build` — a stale `dist/` gets baked in otherwise.
 
 Additional scripts:
 
@@ -183,4 +183,4 @@ Additional scripts:
 
 ### Startup troubleshooting
 
-If the binary logs `failed to bind — is another Chronicle instance already running?` and exits, another Chronicle process (or something else) already owns that port — stop it, or set `CHRONICLE_PORT` to a free one. If the browser doesn't open automatically, check the terminal for the `Chronicle is running at http://127.0.0.1:PORT` log line and open that URL by hand.
+If the binary logs `failed to bind — is another Cronicle instance already running?` and exits, another Cronicle process (or something else) already owns that port — stop it, or set `CRONICLE_PORT` to a free one. If the browser doesn't open automatically, check the terminal for the `Cronicle is running at http://127.0.0.1:PORT` log line and open that URL by hand.

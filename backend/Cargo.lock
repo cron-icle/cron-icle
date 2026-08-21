@@ -477,37 +477,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chronicled"
-version = "0.1.0"
-dependencies = [
- "active-win-pos-rs",
- "axum",
- "chrono",
- "encoding_rs",
- "llama-cpp-rs",
- "mime_guess",
- "notify",
- "open",
- "r2d2",
- "r2d2_sqlite",
- "rdev",
- "rfd",
- "rusqlite",
- "rust-embed",
- "serde",
- "serde_json",
- "sqlite-vec",
- "tokio",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "ureq",
- "uuid",
- "windows 0.61.3",
- "xcap",
-]
-
-[[package]]
 name = "chrono"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -682,6 +651,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "cronicled"
+version = "0.1.0"
+dependencies = [
+ "active-win-pos-rs",
+ "axum",
+ "chrono",
+ "encoding_rs",
+ "llama-cpp-rs",
+ "mime_guess",
+ "notify",
+ "open",
+ "r2d2",
+ "r2d2_sqlite",
+ "rdev",
+ "rfd",
+ "rusqlite",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "sqlite-vec",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "ureq",
+ "uuid",
+ "windows 0.61.3",
+ "xcap",
 ]
 
 [[package]]

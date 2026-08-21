@@ -19,9 +19,9 @@ pub struct AppState {
     pub settings: Arc<Mutex<CaptureSettings>>,
     pub capture_stop: Mutex<Option<Arc<AtomicBool>>>,
     pub capture_threads: Mutex<Vec<JoinHandle<()>>>,
-    /// The chat/vision `llama-server` process, if Chronicle started it.
+    /// The chat/vision `llama-server` process, if Cronicle started it.
     pub llama_chat_process: Mutex<Option<Child>>,
-    /// The embedding `llama-server` process, if Chronicle started it.
+    /// The embedding `llama-server` process, if Cronicle started it.
     pub llama_embed_process: Mutex<Option<Child>>,
     /// Set when database initialization failed and a degraded in-memory
     /// database is being used instead. Surfaced to the UI so a failed disk
@@ -62,7 +62,7 @@ impl AppState {
     /// can surface it instead of the app disappearing silently.
     pub fn initialize() -> Self {
         // No data directory chosen yet is not a failure: the user picks one
-        // from Settings when they set up local AI, and until then Chronicle
+        // from Settings when they set up local AI, and until then Cronicle
         // simply runs on a transient in-memory database rather than
         // blocking startup on a folder-choose dialog.
         let data_dir_configured = crate::data_directory::current().is_some();
@@ -89,7 +89,7 @@ impl AppState {
                     (
                         fallback,
                         Some(format!(
-                            "Chronicle could not open its local database and is running in a temporary, non-persistent mode: {error}"
+                            "Cronicle could not open its local database and is running in a temporary, non-persistent mode: {error}"
                         )),
                     )
                 }
@@ -126,7 +126,7 @@ impl AppState {
         };
         // Only pool connections to the on-disk file: when we fell back to an
         // in-memory writer, a pooled reader would open an unrelated (or
-        // stale) chronicle.db file rather than the live in-memory database.
+        // stale) cronicle.db file rather than the live in-memory database.
         let reader_pool = if data_dir_configured && startup_error.is_none() {
             match sqlite::open_reader_pool() {
                 Ok(pool) => Some(pool),

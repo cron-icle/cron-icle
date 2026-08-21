@@ -1,4 +1,4 @@
-//! Chronicle: a local-first computer memory engine that runs as a single
+//! Cronicle: a local-first computer memory engine that runs as a single
 //! standalone daemon, in the spirit of Postgres or Redis — one process owns
 //! capture, persistence, local LLM inference, and an embedded HTTP server
 //! that serves both a JSON API and the built frontend on `127.0.0.1`. There
@@ -77,7 +77,7 @@ async fn shutdown_signal(state: Arc<AppState>) {
 
 pub async fn run() {
     tracing_subscriber::fmt()
-        .with_env_filter("chronicle=info")
+        .with_env_filter("cronicle=info")
         .with_target(false)
         .init();
 
@@ -115,13 +115,13 @@ pub async fn run() {
     let listener = match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
         Ok(listener) => listener,
         Err(error) => {
-            tracing::error!(%error, port, "failed to bind — is another Chronicle instance already running?");
+            tracing::error!(%error, port, "failed to bind — is another Cronicle instance already running?");
             std::process::exit(1);
         }
     };
 
     let url = format!("http://127.0.0.1:{port}");
-    tracing::info!(%url, "Chronicle is running");
+    tracing::info!(%url, "Cronicle is running");
     if config::should_open_browser() {
         if let Err(error) = open::that(&url) {
             tracing::warn!(%error, "failed to open the browser automatically");
@@ -132,7 +132,7 @@ pub async fn run() {
         .with_graceful_shutdown(shutdown_signal(state))
         .await
     {
-        tracing::error!(%error, "Chronicle exited because the HTTP server failed");
+        tracing::error!(%error, "Cronicle exited because the HTTP server failed");
         std::process::exit(1);
     }
 }

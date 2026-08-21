@@ -740,7 +740,7 @@ pub fn stop_capture(state: &AppState) -> Result<(), String> {
     Ok(())
 }
 
-/// The directory Chronicle currently stores its data (database, downloaded
+/// The directory Cronicle currently stores its data (database, downloaded
 /// models) under, or `None` if the user hasn't chosen one yet.
 pub fn get_data_directory() -> Option<String> {
     crate::data_directory::current().map(|dir| dir.display().to_string())
@@ -753,7 +753,7 @@ pub fn data_directory_move_progress(state: &AppState) -> Option<DataDirectoryMov
     state.data_dir_move_progress.lock().ok().and_then(|guard| guard.clone())
 }
 
-/// Picks (if none is set yet) or moves (if one already is) Chronicle's data
+/// Picks (if none is set yet) or moves (if one already is) Cronicle's data
 /// directory, then relaunches the process so it starts fresh against it.
 ///
 /// Everything that could hold a file open under the current data directory
@@ -778,7 +778,7 @@ pub async fn change_data_directory(state: Arc<AppState>) -> Result<(), String> {
     let progress_state = state.clone();
     tokio::task::spawn_blocking(move || {
         let chosen = rfd::FileDialog::new()
-            .set_title("Choose a new folder for Chronicle to store its data and downloaded models")
+            .set_title("Choose a new folder for Cronicle to store its data and downloaded models")
             .pick_folder()
             .ok_or_else(|| "no folder was chosen".to_string())?;
         let mut last_emit = std::time::Instant::now() - std::time::Duration::from_secs(1);

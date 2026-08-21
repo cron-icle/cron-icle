@@ -15,7 +15,7 @@
 use crate::hardware_profiler::HardwareProfile;
 
 /// Fixed overhead for compute buffers, activation scratch space, and the
-/// rest of Chronicle's own memory use (capture, SQLite, the Tauri/WebView2
+/// rest of Cronicle's own memory use (capture, SQLite, the Tauri/WebView2
 /// process) that isn't the model itself. Conservative but not paranoid —
 /// derived from the compute-buffer sizes logged during real GGUF loads in
 /// this codebase's own testing (tens to a few hundred MiB depending on
@@ -64,7 +64,7 @@ pub fn plan_load(
 ) -> Option<MemoryPlan> {
     /// Fraction of available RAM this planner will actually commit to a
     /// model load; the rest stays free for the OS and the rest of
-    /// Chronicle. Not a hard OS limit — a deliberate margin against the
+    /// Cronicle. Not a hard OS limit — a deliberate margin against the
     /// estimate above being wrong in the unsafe direction.
     const SAFETY_MARGIN: f64 = 0.8;
     if profile.available_ram_bytes == 0 {
@@ -114,7 +114,7 @@ pub fn adaptive_batch_size(max_batch_size: usize, profile: &HardwareProfile) -> 
 
 /// Picks the smallest context size from `CONTEXT_SIZE_LADDER` that
 /// comfortably holds `estimated_tokens` (prompt + response headroom),
-/// falling back to the largest rung if nothing smaller fits. Chronicle's
+/// falling back to the largest rung if nothing smaller fits. Cronicle's
 /// prompts vary a lot in size — a single short window-focus event is a
 /// fraction of an 8-batch numbered prompt — and requesting less context for
 /// the small, common case means a smaller KV cache allocation and faster

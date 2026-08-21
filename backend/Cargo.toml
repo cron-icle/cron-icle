@@ -1,16 +1,16 @@
 [package]
-name = "chronicled"
+name = "cronicled"
 version = "0.1.0"
-description = "Chronicle local-first computer memory engine daemon"
-authors = ["Chronicle"]
+description = "Cronicle local-first computer memory engine daemon"
+authors = ["Cronicle"]
 edition = "2021"
 
 [[bin]]
-name = "chronicle"
+name = "cronicle"
 path = "src/main.rs"
 
 [lib]
-name = "chronicled"
+name = "cronicled"
 crate-type = ["rlib"]
 
 [dependencies]

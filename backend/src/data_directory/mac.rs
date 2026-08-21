@@ -9,7 +9,7 @@ pub(super) fn pointer_file() -> PathBuf {
     PathBuf::from(home)
         .join("Library")
         .join("Application Support")
-        .join("Chronicle")
+        .join("Cronicle")
         .join("data_dir.txt")
 }
 

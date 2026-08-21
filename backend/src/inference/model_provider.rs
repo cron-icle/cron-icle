@@ -1,5 +1,5 @@
 //! Local inference over Gemma 3 (chat/vision) and EmbeddingGemma, both run
-//! in-process via `native_inference` (Chronicle's own fork of
+//! in-process via `native_inference` (Cronicle's own fork of
 //! `llama-cpp-rs`, at `E:\llama-cpp-rs`, with the `mtmd` multimodal feature
 //! enabled) rather than through a separately spawned `llama-server` HTTP
 //! server. The GGUF model files (and mmproj projector) live under
@@ -103,7 +103,7 @@ fn chat_server_args(chat_model: &Path, mmproj: &Path, host: &str, port: u16) -> 
 /// the engine's own heuristics, and avoids over-subscribing on hybrid
 /// (performance + efficiency core) CPUs where llama.cpp's auto-detection is
 /// not always the count you'd actually pick. One core is held back for the
-/// rest of Chronicle (capture hooks, the Tauri UI thread, SQLite) so local
+/// rest of Cronicle (capture hooks, the Tauri UI thread, SQLite) so local
 /// inference never fully starves the app it's running inside.
 fn inference_thread_count() -> usize {
     std::thread::available_parallelism()
@@ -257,12 +257,12 @@ pub struct LlamaCppProvider {
 impl Default for LlamaCppProvider {
     fn default() -> Self {
         Self {
-            host: std::env::var("CHRONICLE_LLAMA_HOST").unwrap_or_else(|_| "127.0.0.1".into()),
-            chat_port: std::env::var("CHRONICLE_LLAMA_CHAT_PORT")
+            host: std::env::var("CRONICLE_LLAMA_HOST").unwrap_or_else(|_| "127.0.0.1".into()),
+            chat_port: std::env::var("CRONICLE_LLAMA_CHAT_PORT")
                 .ok()
                 .and_then(|value| value.parse().ok())
                 .unwrap_or(8090),
-            embed_port: std::env::var("CHRONICLE_LLAMA_EMBED_PORT")
+            embed_port: std::env::var("CRONICLE_LLAMA_EMBED_PORT")
                 .ok()
                 .and_then(|value| value.parse().ok())
                 .unwrap_or(8091),
@@ -342,7 +342,7 @@ impl LlamaCppProvider {
     /// Starts the chat/vision `llama-server` if the binary and model files
     /// are present and it isn't already listening. Returns `Ok(None)` (not
     /// an error) when setup isn't complete yet — capture and the rest of
-    /// Chronicle must keep working with local AI simply pending setup.
+    /// Cronicle must keep working with local AI simply pending setup.
     pub fn start_chat_server_if_needed(&self) -> Result<Option<Child>, String> {
         if self.chat_reachable() {
             return Ok(None);
@@ -517,7 +517,7 @@ impl TextEmbedder for LlamaCppProvider {
             .ok_or("embedding engine returned no embedding".into())
     }
 }
-/// `LlamaCppProvider::default()` reads `CHRONICLE_LLAMA_*` env vars, which
+/// `LlamaCppProvider::default()` reads `CRONICLE_LLAMA_*` env vars, which
 /// are process-global. Tests that set them (to point the provider at a mock
 /// server) and tests that assert on the unset defaults would otherwise race
 /// when `cargo test` runs them on different threads of the same process.

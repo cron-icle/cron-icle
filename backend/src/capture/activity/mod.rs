@@ -1,6 +1,6 @@
 //! Windows activity capture providers.
 //!
-//! This module owns the boundary between OS activity APIs and Chronicle's
+//! This module owns the boundary between OS activity APIs and Cronicle's
 //! normalized raw-event model. Capture runs on a background thread and must
 //! never wait for semantic AI processing. Everything in this file is
 //! platform-independent (settings, normalization, exclusion matching,

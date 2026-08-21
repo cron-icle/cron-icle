@@ -1,19 +1,19 @@
-//! Where Chronicle stores its data — chosen explicitly by the user, from
+//! Where Cronicle stores its data — chosen explicitly by the user, from
 //! Settings, not forced on app start.
 //!
-//! Everything Chronicle writes to disk (the sqlite event database, the
+//! Everything Cronicle writes to disk (the sqlite event database, the
 //! downloaded llama.cpp model files) lives under one directory instead of
 //! being scattered into the install folder or a fixed path the user never
 //! agreed to. There is deliberately no default: until the user picks one
 //! (via the Settings panel, when they set up local AI), `current()` simply
-//! returns `None` and Chronicle runs in a temporary, non-persistent mode —
+//! returns `None` and Cronicle runs in a temporary, non-persistent mode —
 //! it does not block startup on a folder-choose dialog. The choice, once
 //! made, is remembered in a small pointer file whose OS location is
 //! platform-specific (see `windows.rs`, `mac.rs`).
 //!
-//! Whatever folder the user picks, Chronicle never writes directly into it:
+//! Whatever folder the user picks, Cronicle never writes directly into it:
 //! it creates (and, for both storage and retrieval, only ever operates on) a
-//! `chronicle` subfolder underneath. The picked folder is often a general
+//! `cronicle` subfolder underneath. The picked folder is often a general
 //! one — a user's existing "Data" or "Documents" drive root, say — and
 //! writing loose files straight into it, or later deleting siblings the
 //! user didn't expect deleted, would be careless.
@@ -31,7 +31,7 @@ use mac as platform;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-const CHRONICLE_SUBFOLDER: &str = "chronicle";
+const CRONICLE_SUBFOLDER: &str = "cronicle";
 
 fn read_pointer() -> Option<PathBuf> {
     let contents = std::fs::read_to_string(platform::pointer_file()).ok()?;
@@ -51,22 +51,22 @@ fn write_pointer(root: &Path) -> std::io::Result<()> {
     std::fs::write(pointer, root.to_string_lossy().as_bytes())
 }
 
-fn chronicle_subfolder(root: &Path) -> PathBuf {
-    root.join(CHRONICLE_SUBFOLDER)
+fn cronicle_subfolder(root: &Path) -> PathBuf {
+    root.join(CRONICLE_SUBFOLDER)
 }
 
 fn cell() -> &'static Mutex<Option<PathBuf>> {
     static CELL: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
     CELL.get_or_init(|| {
         let configured = read_pointer()
-            .filter(|root| chronicle_subfolder(root).is_dir())
-            .map(|root| chronicle_subfolder(&root));
+            .filter(|root| cronicle_subfolder(root).is_dir())
+            .map(|root| cronicle_subfolder(&root));
         Mutex::new(configured)
     })
 }
 
-/// The `chronicle` subfolder under the user-chosen root directory, if the
-/// user has chosen one yet. `None` means Chronicle is running in a
+/// The `cronicle` subfolder under the user-chosen root directory, if the
+/// user has chosen one yet. `None` means Cronicle is running in a
 /// temporary, non-persistent mode until Settings is used to pick a folder —
 /// this never blocks or prompts on its own.
 pub fn current() -> Option<PathBuf> {
@@ -79,7 +79,7 @@ pub fn current() -> Option<PathBuf> {
 pub fn database_file() -> PathBuf {
     current()
         .expect("database_file() called before a data directory was chosen")
-        .join("chronicle.db")
+        .join("cronicle.db")
 }
 
 fn format_bytes(bytes: u64) -> String {
@@ -159,7 +159,7 @@ pub fn relocate_or_set(new_root: &Path, mut on_progress: impl FnMut(u64, u64)) -
         return Err("no destination directory was provided".into());
     }
     let Some(current) = current() else {
-        let dir = chronicle_subfolder(new_root);
+        let dir = cronicle_subfolder(new_root);
         std::fs::create_dir_all(&dir)
             .map_err(|error| format!("failed to create {}: {error}", dir.display()))?;
         write_pointer(new_root)
@@ -167,7 +167,7 @@ pub fn relocate_or_set(new_root: &Path, mut on_progress: impl FnMut(u64, u64)) -
         *cell().lock().unwrap() = Some(dir);
         return Ok(());
     };
-    let dest = chronicle_subfolder(new_root);
+    let dest = cronicle_subfolder(new_root);
     if dest == current {
         return Ok(());
     }

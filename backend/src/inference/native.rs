@@ -15,7 +15,7 @@
 //! expensive-to-load, cheap-to-reuse part and are kept in `GenerationEngine`
 //! / `EmbeddingEngine`; the `LlamaContext` (KV cache buffers) is cheap to
 //! allocate and is created fresh per request rather than reused, since every
-//! Chronicle inference call is an independent single-turn request with no
+//! Cronicle inference call is an independent single-turn request with no
 //! conversation state to preserve across calls.
 
 use encoding_rs::UTF_8;
@@ -55,7 +55,7 @@ pub struct EmbeddingEngine {
     n_threads: i32,
 }
 
-/// Sampling temperature Chronicle has always used for structured-JSON
+/// Sampling temperature Cronicle has always used for structured-JSON
 /// extraction: low enough to stay close to the model's most likely reading
 /// of the event, not zero (pure greedy can get stuck repeating itself on
 /// small quantized models more than a slightly-random low-temperature

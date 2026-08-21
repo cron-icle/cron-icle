@@ -1,4 +1,4 @@
 #[tokio::main]
 async fn main() {
-    chronicled::run().await;
+    cronicled::run().await;
 }

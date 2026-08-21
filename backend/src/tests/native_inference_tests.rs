@@ -2,20 +2,20 @@
 
     /// These tests need a real (tiny) GGUF model on disk and are slow
     /// (model load + generation), so they're gated behind an env var rather
-    /// than run on every `cargo test`. Point `CHRONICLE_TEST_GGUF_MODEL` at
+    /// than run on every `cargo test`. Point `CRONICLE_TEST_GGUF_MODEL` at
     /// a small instruction-tuned or embedding GGUF (e.g. a `stories260K`-
     /// style test model for generation, or a small embedding model) to run
     /// them locally; CI without that env var skips them rather than failing.
     fn test_model_path() -> Option<std::path::PathBuf> {
-        std::env::var("CHRONICLE_TEST_GGUF_MODEL").ok().map(std::path::PathBuf::from)
+        std::env::var("CRONICLE_TEST_GGUF_MODEL").ok().map(std::path::PathBuf::from)
     }
 
     /// Companion mmproj GGUF for `test_model_path`, needed only by the
-    /// `VisionEngine` test below. Point `CHRONICLE_TEST_MMPROJ_MODEL` at the
+    /// `VisionEngine` test below. Point `CRONICLE_TEST_MMPROJ_MODEL` at the
     /// multimodal projector matching whatever vision-capable chat model
-    /// `CHRONICLE_TEST_GGUF_MODEL` points at.
+    /// `CRONICLE_TEST_GGUF_MODEL` points at.
     fn test_mmproj_path() -> Option<std::path::PathBuf> {
-        std::env::var("CHRONICLE_TEST_MMPROJ_MODEL").ok().map(std::path::PathBuf::from)
+        std::env::var("CRONICLE_TEST_MMPROJ_MODEL").ok().map(std::path::PathBuf::from)
     }
 
     /// 1x1 transparent PNG — the minimal input `VisionEngine` can decode
@@ -29,7 +29,7 @@
     #[test]
     fn vision_engine_produces_nonempty_output_from_a_real_model() {
         let (Some(model_path), Some(mmproj_path)) = (test_model_path(), test_mmproj_path()) else {
-            eprintln!("skipping: CHRONICLE_TEST_GGUF_MODEL and/or CHRONICLE_TEST_MMPROJ_MODEL not set");
+            eprintln!("skipping: CRONICLE_TEST_GGUF_MODEL and/or CRONICLE_TEST_MMPROJ_MODEL not set");
             return;
         };
         let engine = VisionEngine::load(&model_path, &mmproj_path, 0, NonZeroU32::new(4096).unwrap(), 2)
@@ -43,7 +43,7 @@
     #[test]
     fn generation_engine_produces_nonempty_output_from_a_real_model() {
         let Some(path) = test_model_path() else {
-            eprintln!("skipping: CHRONICLE_TEST_GGUF_MODEL not set");
+            eprintln!("skipping: CRONICLE_TEST_GGUF_MODEL not set");
             return;
         };
         let engine = GenerationEngine::load(&path, 0, NonZeroU32::new(2048).unwrap(), 2)
@@ -55,7 +55,7 @@
     #[test]
     fn generation_engine_lifecycle_loads_stays_resident_and_unloads_when_idle() {
         let Some(path) = test_model_path() else {
-            eprintln!("skipping: CHRONICLE_TEST_GGUF_MODEL not set");
+            eprintln!("skipping: CRONICLE_TEST_GGUF_MODEL not set");
             return;
         };
         let n_ctx = NonZeroU32::new(2048).unwrap();
@@ -105,7 +105,7 @@
     #[test]
     fn embedding_engine_produces_consistent_dimension_vectors() {
         let Some(path) = test_model_path() else {
-            eprintln!("skipping: CHRONICLE_TEST_GGUF_MODEL not set");
+            eprintln!("skipping: CRONICLE_TEST_GGUF_MODEL not set");
             return;
         };
         let engine = EmbeddingEngine::load(&path, 0, NonZeroU32::new(2048).unwrap(), 2)

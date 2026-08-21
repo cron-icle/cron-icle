@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 pub(super) fn pointer_file() -> PathBuf {
     let base = std::env::var("APPDATA").unwrap_or_else(|_| ".".into());
-    PathBuf::from(base).join("Chronicle").join("data_dir.txt")
+    PathBuf::from(base).join("Cronicle").join("data_dir.txt")
 }
 
 /// Free space, in bytes, available to the current user on the volume

@@ -4,7 +4,7 @@
 //!
 //! This is deliberately conservative about GPU: the bundled llama.cpp
 //! engine is built CPU-only today (no `cuda`/`vulkan` backend), so
-//! `gpu` is always `None` — reporting a GPU Chronicle cannot actually
+//! `gpu` is always `None` — reporting a GPU Cronicle cannot actually
 //! offload to would be actively misleading. Wiring a GPU backend in is
 //! future work (see `README.md`'s "Known limitations"); this module's
 //! job is only to describe what's true right now.

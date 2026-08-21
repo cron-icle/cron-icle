@@ -1,6 +1,6 @@
 param(
-    [string]$Executable = "$PSScriptRoot\..\backend\target\release\chronicle.exe",
-    [string]$Database = "$PSScriptRoot\..\chronicle.db",
+    [string]$Executable = "$PSScriptRoot\..\backend\target\release\cronicle.exe",
+    [string]$Database = "$PSScriptRoot\..\cronicle.db",
     [int]$ObservationSeconds = 8
 )
 
@@ -12,13 +12,13 @@ $resolvedDatabase = if ([System.IO.Path]::IsPathRooted($Database)) {
     [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $Database))
 }
 $startedAt = (Get-Date).ToUniversalTime().ToString("o")
-$chronicle = Start-Process -FilePath $resolvedExecutable -WorkingDirectory (Split-Path $resolvedDatabase) -PassThru
+$cronicle = Start-Process -FilePath $resolvedExecutable -WorkingDirectory (Split-Path $resolvedDatabase) -PassThru
 $foreground = Start-Process -FilePath "notepad.exe" -PassThru
 try {
     Start-Sleep -Seconds $ObservationSeconds
-    $chronicle.Refresh()
-    if ($chronicle.HasExited) { throw "Chronicle exited with code $($chronicle.ExitCode)" }
-    if (-not (Test-Path -LiteralPath $resolvedDatabase)) { throw "Chronicle did not create $resolvedDatabase" }
+    $cronicle.Refresh()
+    if ($cronicle.HasExited) { throw "Cronicle exited with code $($cronicle.ExitCode)" }
+    if (-not (Test-Path -LiteralPath $resolvedDatabase)) { throw "Cronicle did not create $resolvedDatabase" }
 
     $python = @'
 import sqlite3, sys
@@ -41,6 +41,6 @@ print(row[0])
 }
 finally {
     if (-not $foreground.HasExited) { Stop-Process -Id $foreground.Id -Force }
-    if (-not $chronicle.HasExited) { Stop-Process -Id $chronicle.Id -Force }
-    $foreground.Dispose(); $chronicle.Dispose()
+    if (-not $cronicle.HasExited) { Stop-Process -Id $cronicle.Id -Force }
+    $foreground.Dispose(); $cronicle.Dispose()
 }

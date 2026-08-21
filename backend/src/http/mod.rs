@@ -1,6 +1,6 @@
-//! HTTP surface for Chronicle's daemon binary.
+//! HTTP surface for Cronicle's daemon binary.
 //!
-//! Chronicle runs as a single long-lived process (no installer, no native
+//! Cronicle runs as a single long-lived process (no installer, no native
 //! app shell) that exposes its state over a local-only JSON API on
 //! `127.0.0.1`. Each submodule here is a thin translation layer: handlers
 //! extract the request, forward to a plain function in `app_service`/
