@@ -1,6 +1,6 @@
 //! Local inference over Gemma 3 (chat/vision) and EmbeddingGemma, both run
 //! in-process via `native_inference` (Cronicle's own fork of
-//! `llama-cpp-rs`, at `E:\llama-cpp-rs`, with the `mtmd` multimodal feature
+//! `llamacpp-rs` (https://github.com/cron-icle/llamacpp-rs), with the `mtmd` multimodal feature
 //! enabled) rather than through a separately spawned `llama-server` HTTP
 //! server. The GGUF model files (and mmproj projector) live under
 //! `<data dir>\llama\models` (see `engine_paths`), where `<data dir>` is the

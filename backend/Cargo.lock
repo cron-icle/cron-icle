@@ -661,7 +661,7 @@ dependencies = [
  "axum",
  "chrono",
  "encoding_rs",
- "llama-cpp-rs",
+ "llamacpp-rs",
  "mime_guess",
  "notify",
  "open",
@@ -1835,26 +1835,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 
 [[package]]
-name = "llama-cpp-rs"
+name = "llamacpp-rs"
 version = "0.1.0"
-dependencies = [
- "encoding_rs",
- "enumflags2",
- "llama-cpp-rs-sys",
- "thiserror",
- "tracing",
- "tracing-core",
-]
-
-[[package]]
-name = "llama-cpp-rs-sys"
-version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bde5ad3a350078a8db6f01f095860c64d68b590707603a7cec414315531b1500"
 dependencies = [
  "bindgen 0.72.1",
  "cc",
  "cmake",
+ "encoding_rs",
+ "enumflags2",
  "find_cuda_helper",
  "glob",
+ "thiserror",
+ "tracing",
+ "tracing-core",
  "walkdir",
 ]
 

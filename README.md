@@ -38,7 +38,7 @@ Raw events are append-only evidence. Semantic events reference their source raw 
 
 ### Local AI engine
 
-Local inference runs on [llama.cpp](https://github.com/ggml-org/llama.cpp), bundled — no separate install, tray icon, or Start Menu entry for it. Text analysis and embeddings run **in-process** via native `llama-cpp-2` Rust bindings (direct control over model/context lifecycle and memory, not an HTTP call to a separately spawned server); a bundled `llama-server` is still spawned for vision (screenshot) analysis, which hasn't been ported to the native path yet.
+Local inference runs on [llama.cpp](https://github.com/ggml-org/llama.cpp), bundled — no separate install, tray icon, or Start Menu entry for it. Text analysis and embeddings run **in-process** via native Rust bindings from [`llamacpp-rs`](https://github.com/cron-icle/llamacpp-rs) ([crates.io](https://crates.io/crates/llamacpp-rs)) — direct control over model/context lifecycle and memory, not an HTTP call to a separately spawned server; a bundled `llama-server` is still spawned for vision (screenshot) analysis, which hasn't been ported to the native path yet.
 
 ```mermaid
 flowchart TB
@@ -165,6 +165,8 @@ npm run dev
 `npm run dev` runs the Rust backend (`cargo run`) and the Vite dev server side by side — Vite serves the frontend on `http://localhost:1420` with hot reload and proxies `/api/*` to the backend, which binds its own port (`CRONICLE_PORT`, default `47823`) and does **not** auto-open a browser tab for you in this mode; open `localhost:1420` yourself. Run only the backend with `npm run dev:backend`, or only the frontend with `npm run dev:frontend`.
 
 `npm test` runs the Rust test suite (schema, ordering, FTS, retries, queue, end-to-end processing). `npm run test:frontend` type-checks the frontend. Capture workers auto-restart on launch if capture was previously enabled.
+
+To exercise local AI inference end-to-end after `npm run dev`: open `localhost:1420`, go to **Settings**, and work through the one-time setup checklist (download engine → download analysis model → download embedding model → start engines — see "Local AI engine" above). Once engines are running, generate some activity (switch windows, edit files) and check the **Timeline**/**Search** pages for processed semantic events; `GET /api/inference/telemetry` reports engine residency and hardware sizing if something looks stuck, and the backend terminal's `tracing` logs surface model-load or inference errors directly.
 
 To build the single distributable binary (frontend compiled to static assets and embedded into the Rust binary at compile time — see `backend/src/lib.rs`'s `FrontendAssets`):
 
